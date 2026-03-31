@@ -1,10 +1,10 @@
-export function getDashboardHtml(contractAddress: string, ownerAddress: string): string {
+export function getDashboardHtml(contractAddress: string, deployerAddress: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NeuroConsent — Neural Data Consent on Flow</title>
+  <title>NeuroCoop — Neural Data Cooperative</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -16,375 +16,316 @@ export function getDashboardHtml(contractAddress: string, ownerAddress: string):
       margin: 0 auto;
     }
     h1 { color: #00d4aa; font-size: 1.8rem; margin-bottom: 4px; }
-    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 24px; }
+    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 8px; }
+    .track { color: #666; font-size: 0.75rem; margin-bottom: 24px; font-style: italic; }
     .badges { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
-    .badge {
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 0.75rem;
-      font-weight: bold;
-    }
+    .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; font-weight: bold; }
     .badge-flow { background: #00ef8b22; color: #00ef8b; border: 1px solid #00ef8b44; }
-    .badge-lit { background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; }
     .badge-storacha { background: #f5932022; color: #f59320; border: 1px solid #f5932044; }
     .badge-neuro { background: #ec489922; color: #ec4899; border: 1px solid #ec489944; }
+    .badge-coop { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
+    .badge-ethics { background: #a78bfa22; color: #a78bfa; border: 1px solid #a78bfa44; }
 
-    .status-bar {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 12px;
-      margin-bottom: 24px;
-    }
-    .stat {
-      background: #12121a;
-      border: 1px solid #1e1e2e;
-      border-radius: 8px;
-      padding: 12px 16px;
-    }
-    .stat-label { color: #666; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; }
-    .stat-value { color: #00d4aa; font-size: 1.1rem; margin-top: 4px; word-break: break-all; }
-    .stat-value.warn { color: #f59320; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+    .stat { background: #12121a; border: 1px solid #1e1e2e; border-radius: 8px; padding: 12px 16px; }
+    .stat-label { color: #666; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; }
+    .stat-value { color: #00d4aa; font-size: 1.2rem; margin-top: 4px; }
 
-    .panel {
-      background: #12121a;
-      border: 1px solid #1e1e2e;
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 20px;
-    }
-    .panel h2 {
-      color: #00d4aa;
-      font-size: 1rem;
-      margin-bottom: 16px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #1e1e2e;
-    }
+    .panel { background: #12121a; border: 1px solid #1e1e2e; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
+    .panel h2 { color: #00d4aa; font-size: 1rem; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #1e1e2e; }
+    .panel p.desc { color: #888; font-size: 0.8rem; margin-bottom: 12px; }
 
     .form-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-    input, textarea {
-      background: #0a0a0f;
-      border: 1px solid #2a2a3a;
-      color: #e0e0e0;
-      padding: 8px 12px;
-      border-radius: 4px;
-      font-family: inherit;
-      font-size: 0.85rem;
-      flex: 1;
-      min-width: 200px;
+    input, textarea, select {
+      background: #0a0a0f; border: 1px solid #2a2a3a; color: #e0e0e0;
+      padding: 8px 12px; border-radius: 4px; font-family: inherit; font-size: 0.85rem; flex: 1; min-width: 180px;
     }
-    input:focus, textarea:focus { border-color: #00d4aa; outline: none; }
-    textarea { min-height: 80px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { border-color: #00d4aa; outline: none; }
+    textarea { min-height: 60px; resize: vertical; }
 
     button {
-      background: #00d4aa;
-      color: #0a0a0f;
-      border: none;
-      padding: 8px 20px;
-      border-radius: 4px;
-      font-family: inherit;
-      font-weight: bold;
-      font-size: 0.85rem;
-      cursor: pointer;
-      white-space: nowrap;
+      background: #00d4aa; color: #0a0a0f; border: none; padding: 8px 20px;
+      border-radius: 4px; font-family: inherit; font-weight: bold; font-size: 0.85rem;
+      cursor: pointer; white-space: nowrap;
     }
     button:hover { background: #00f0c0; }
-    button.danger { background: #ef4444; color: white; }
-    button.danger:hover { background: #f87171; }
-    button.secondary { background: #7c3aed; color: white; }
-    button.secondary:hover { background: #8b5cf6; }
+    button.vote-for { background: #22c55e; color: white; }
+    button.vote-against { background: #ef4444; color: white; }
+    button.secondary { background: #3b82f6; color: white; }
+    button.execute { background: #a78bfa; color: white; }
 
     .result {
-      background: #0a0a0f;
-      border: 1px solid #2a2a3a;
-      border-radius: 4px;
-      padding: 12px;
-      margin-top: 12px;
-      font-size: 0.8rem;
-      white-space: pre-wrap;
-      word-break: break-all;
-      max-height: 300px;
-      overflow-y: auto;
+      background: #0a0a0f; border: 1px solid #2a2a3a; border-radius: 4px;
+      padding: 12px; margin-top: 12px; font-size: 0.78rem;
+      white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto;
     }
     .result.success { border-color: #00d4aa44; }
     .result.error { border-color: #ef444444; color: #f87171; }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.8rem;
-    }
-    th {
-      text-align: left;
-      color: #666;
-      font-size: 0.7rem;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      padding: 8px;
-      border-bottom: 1px solid #1e1e2e;
-    }
-    td {
-      padding: 8px;
-      border-bottom: 1px solid #1e1e2e08;
-      word-break: break-all;
-    }
-    .tag {
-      display: inline-block;
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 0.7rem;
-      font-weight: bold;
-    }
-    .tag-registered { background: #00d4aa22; color: #00d4aa; }
-    .tag-granted { background: #00ef8b22; color: #00ef8b; }
-    .tag-revoked { background: #ef444422; color: #ef4444; }
-
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    th { text-align: left; color: #666; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid #1e1e2e; }
+    td { padding: 8px; border-bottom: 1px solid #1e1e2e08; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.7rem; font-weight: bold; }
+    .tag-active { background: #3b82f622; color: #60a5fa; }
+    .tag-approved { background: #22c55e22; color: #22c55e; }
+    .tag-rejected { background: #ef444422; color: #ef4444; }
+    .tag-executed { background: #a78bfa22; color: #a78bfa; }
     a { color: #00d4aa; text-decoration: none; }
     a:hover { text-decoration: underline; }
-
-    .architecture {
-      background: #0a0a0f;
-      border: 1px solid #2a2a3a;
-      border-radius: 4px;
-      padding: 16px;
-      font-size: 0.75rem;
-      line-height: 1.6;
-      color: #888;
-      white-space: pre;
-      overflow-x: auto;
-    }
+    .vote-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin-top: 4px; }
+    .vote-for-bar { background: #22c55e; }
+    .vote-against-bar { background: #ef4444; }
+    .vote-empty { background: #1e1e2e; flex: 1; }
   </style>
 </head>
 <body>
-  <h1>NeuroConsent</h1>
-  <p class="subtitle">Privacy-preserving consent framework for neural data on the blockchain</p>
+  <h1>NeuroCoop</h1>
+  <p class="subtitle">Neural Data Cooperative Protocol</p>
+  <p class="track">Cognition x Coordination x Computation — PL Genesis Neurotech Track</p>
 
   <div class="badges">
-    <span class="badge badge-flow">Flow EVM</span>
-    <span class="badge badge-lit">Lit Protocol</span>
-    <span class="badge badge-storacha">Storacha</span>
     <span class="badge badge-neuro">Neurotech</span>
+    <span class="badge badge-coop">Cooperative</span>
+    <span class="badge badge-flow">Flow EVM</span>
+    <span class="badge badge-storacha">Storacha</span>
+    <span class="badge badge-ethics">Neurorights</span>
   </div>
 
-  <div class="status-bar" id="statusBar">
-    <div class="stat"><div class="stat-label">Status</div><div class="stat-value" id="s-status">loading...</div></div>
-    <div class="stat"><div class="stat-label">Owner</div><div class="stat-value" id="s-owner">${ownerAddress.slice(0, 10)}...</div></div>
-    <div class="stat"><div class="stat-label">Balance</div><div class="stat-value" id="s-balance">...</div></div>
-    <div class="stat"><div class="stat-label">Uploads</div><div class="stat-value" id="s-uploads">0</div></div>
-    <div class="stat"><div class="stat-label">Events</div><div class="stat-value" id="s-events">0</div></div>
-    <div class="stat"><div class="stat-label">Lit</div><div class="stat-value" id="s-lit">...</div></div>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Members</div><div class="stat-value" id="s-members">0</div></div>
+    <div class="stat"><div class="stat-label">Proposals</div><div class="stat-value" id="s-proposals">0</div></div>
+    <div class="stat"><div class="stat-label">Status</div><div class="stat-value" id="s-status">...</div></div>
+    <div class="stat"><div class="stat-label">Contract</div><div class="stat-value" style="font-size:0.7rem;">${contractAddress.slice(0, 10)}...</div></div>
   </div>
 
-  <!-- Upload Panel -->
+  <!-- Join Cooperative -->
   <div class="panel">
-    <h2>Upload Neural Data</h2>
-    <p style="color: #888; font-size: 0.8rem; margin-bottom: 12px;">
-      Upload EEG data — it will be encrypted via Lit Protocol, stored on Storacha, and registered on Flow EVM.
-    </p>
+    <h2>Join the Cooperative</h2>
+    <p class="desc">Contribute de-identified EEG data to the collective pool. Your data is encrypted with your key and stored on Storacha.</p>
     <div class="form-row">
-      <textarea id="eegData" placeholder="Paste EEG/CSV data here, or leave empty to use sample data"></textarea>
+      <input id="joinKey" type="password" placeholder="Your private key (0x...)" />
+      <button onclick="joinCoop()">Join & Upload EEG</button>
     </div>
-    <div class="form-row">
-      <input id="filename" placeholder="Filename (e.g., session-001.csv)" value="sample-eeg.csv" />
-      <button onclick="uploadData()">Encrypt & Upload</button>
-    </div>
-    <div id="uploadResult" class="result" style="display:none;"></div>
+    <div id="joinResult" class="result" style="display:none;"></div>
   </div>
 
-  <!-- Consent Manager -->
+  <!-- Submit Proposal -->
   <div class="panel">
-    <h2>Consent Manager</h2>
-    <p style="color: #888; font-size: 0.8rem; margin-bottom: 12px;">
-      Grant or revoke researcher access to your neural data. Changes are immediate and on-chain.
-    </p>
+    <h2>Submit Research Proposal</h2>
+    <p class="desc">Researchers propose studies. Members vote on whether to grant access. One member = one vote.</p>
     <div class="form-row">
-      <input id="consentDataId" placeholder="Data ID (0x...)" />
-      <input id="researcherAddr" placeholder="Researcher address (0x...)" />
+      <input id="propKey" type="password" placeholder="Researcher private key (0x...)" />
     </div>
     <div class="form-row">
-      <button onclick="grantConsent()">Grant Consent</button>
-      <button class="danger" onclick="revokeConsent()">Revoke Consent</button>
-      <button class="secondary" onclick="checkConsent()">Check Status</button>
+      <input id="propPurpose" placeholder="Purpose ID (e.g., alzheimers-biomarker)" />
+      <input id="propDuration" type="number" placeholder="Duration (days)" value="90" style="max-width:120px;" />
     </div>
-    <div id="consentResult" class="result" style="display:none;"></div>
+    <div class="form-row">
+      <textarea id="propDesc" placeholder="Describe your research and what data you need..."></textarea>
+    </div>
+    <div class="form-row">
+      <button class="secondary" onclick="submitProposal()">Submit Proposal</button>
+    </div>
+    <div id="propResult" class="result" style="display:none;"></div>
   </div>
 
-  <!-- Researcher Decrypt -->
+  <!-- Proposals & Voting -->
   <div class="panel">
-    <h2>Researcher — Request Decryption</h2>
-    <p style="color: #888; font-size: 0.8rem; margin-bottom: 12px;">
-      If you have been granted consent, Lit Protocol will verify your access on-chain and decrypt the data.
-    </p>
+    <h2>Research Proposals</h2>
+    <table>
+      <thead><tr><th>#</th><th>Purpose</th><th>Researcher</th><th>Duration</th><th>Votes</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="proposalTable"><tr><td colspan="7" style="color:#666;text-align:center;">No proposals yet</td></tr></tbody>
+    </table>
+  </div>
+
+  <!-- Vote -->
+  <div class="panel">
+    <h2>Cast Your Vote</h2>
+    <p class="desc">As a cooperative member, vote on research proposals. Your vote is recorded on-chain.</p>
     <div class="form-row">
-      <input id="decryptDataId" placeholder="Data ID (0x...)" />
-      <input id="researcherKey" type="password" placeholder="Your private key (0x...)" />
+      <input id="voteKey" type="password" placeholder="Your private key (0x...)" />
+      <input id="voteId" type="number" placeholder="Proposal #" style="max-width:100px;" />
+      <button class="vote-for" onclick="castVote(true)">Vote FOR</button>
+      <button class="vote-against" onclick="castVote(false)">Vote AGAINST</button>
     </div>
+    <div id="voteResult" class="result" style="display:none;"></div>
+  </div>
+
+  <!-- Execute -->
+  <div class="panel">
+    <h2>Execute Proposal</h2>
+    <p class="desc">After voting, anyone can execute the proposal to finalize the outcome.</p>
     <div class="form-row">
-      <button class="secondary" onclick="decryptData()">Request Decryption</button>
+      <input id="execKey" type="password" placeholder="Any private key (0x...)" />
+      <input id="execId" type="number" placeholder="Proposal #" style="max-width:100px;" />
+      <button class="execute" onclick="execProposal()">Execute</button>
+    </div>
+    <div id="execResult" class="result" style="display:none;"></div>
+  </div>
+
+  <!-- Decrypt / Access Data -->
+  <div class="panel">
+    <h2>Access Pooled Data (Researcher)</h2>
+    <p class="desc">If your proposal was approved, access the cooperative's pooled de-identified EEG data.</p>
+    <div class="form-row">
+      <input id="decryptId" type="number" placeholder="Approved Proposal #" style="max-width:140px;" />
+      <button class="secondary" onclick="accessData()">Request Data Access</button>
     </div>
     <div id="decryptResult" class="result" style="display:none;"></div>
   </div>
 
-  <!-- Event Log -->
+  <!-- Members -->
   <div class="panel">
-    <h2>On-Chain Consent Events</h2>
+    <h2>Cooperative Members</h2>
     <table>
-      <thead>
-        <tr><th>Type</th><th>Data ID</th><th>Researcher</th><th>Tx</th><th>Time</th></tr>
-      </thead>
-      <tbody id="eventLog">
-        <tr><td colspan="5" style="color:#666; text-align:center;">No events yet</td></tr>
-      </tbody>
+      <thead><tr><th>Address</th><th>Channels</th><th>Sample Rate</th><th>De-identified</th><th>Joined</th></tr></thead>
+      <tbody id="memberTable"><tr><td colspan="5" style="color:#666;text-align:center;">No members yet</td></tr></tbody>
     </table>
   </div>
 
-  <!-- Architecture -->
+  <!-- Event Log -->
   <div class="panel">
-    <h2>Architecture</h2>
-    <div class="architecture">User uploads EEG data
-       │
-       ▼
-  ┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
-  │  Lit Protocol    │     │   Storacha   │     │   Flow EVM      │
-  │  (Encryption)    │────▶│   (Storage)  │────▶│  (Consent Reg.) │
-  │                  │     │              │     │                  │
-  │ Encrypt with     │     │ Store on     │     │ registerData()   │
-  │ access control   │     │ IPFS/Filecoin│     │ grantConsent()   │
-  │ conditions       │     │              │     │ revokeConsent()  │
-  └─────────────────┘     └──────────────┘     └─────────────────┘
-       │                                              │
-       │◀─────────── Decryption Request ──────────────┘
-       │         Lit checks hasConsent()
-       │         on Flow EVM contract
-       ▼
-  Researcher gets decrypted data
-  (only if consent is active on-chain)</div>
+    <h2>Governance Log</h2>
+    <table>
+      <thead><tr><th>Event</th><th>Details</th><th>Tx</th><th>Time</th></tr></thead>
+      <tbody id="eventLog"><tr><td colspan="4" style="color:#666;text-align:center;">No events yet</td></tr></tbody>
+    </table>
   </div>
 
-  <p style="color: #444; font-size: 0.7rem; text-align: center; margin-top: 24px;">
-    NeuroConsent — PL Genesis: Frontiers of Collaboration | Neurotech Track
-    <br/>
-    Contract: <a href="https://evm-testnet.flowscan.io/address/${contractAddress}" target="_blank">${contractAddress.slice(0, 10)}...${contractAddress.slice(-8)}</a>
+  <p style="color:#444;font-size:0.65rem;text-align:center;margin-top:24px;">
+    NeuroCoop — PL Genesis: Frontiers of Collaboration | Neurotech Track<br/>
+    Aligned with: Neurorights Foundation, UNESCO 2025, Chile 2021, Colorado HB 24-1058, IEEE P7700<br/>
+    Contract: <a href="https://evm-testnet.flowscan.io/address/${contractAddress}" target="_blank">${contractAddress}</a>
   </p>
 
   <script>
     const API = '';
+    const statusLabels = ['Voting Open', 'Approved', 'Rejected', 'Access Granted', 'Expired'];
+    const statusTags = ['tag-active', 'tag-approved', 'tag-rejected', 'tag-executed', 'tag-rejected'];
+
+    function show(id, data, err) {
+      const el = document.getElementById(id);
+      el.style.display = 'block';
+      el.className = 'result ' + (err ? 'error' : 'success');
+      el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+    }
 
     async function fetchHealth() {
       try {
         const r = await fetch(API + '/health');
         const d = await r.json();
+        document.getElementById('s-members').textContent = d.cooperative?.members ?? '?';
+        document.getElementById('s-proposals').textContent = d.cooperative?.proposals ?? '?';
         document.getElementById('s-status').textContent = d.status;
-        document.getElementById('s-balance').textContent = d.balance;
-        document.getElementById('s-uploads').textContent = d.totalUploads;
-        document.getElementById('s-events').textContent = d.totalEvents;
-        document.getElementById('s-lit').textContent = d.litConnected ? 'connected' : 'offline';
-        if (!d.litConnected) document.getElementById('s-lit').classList.add('warn');
-      } catch(e) { console.error(e); }
+      } catch(e) {}
+    }
+
+    async function fetchProposals() {
+      try {
+        const r = await fetch(API + '/proposals');
+        const d = await r.json();
+        const tb = document.getElementById('proposalTable');
+        if (!d.proposals?.length) return;
+        tb.innerHTML = d.proposals.map(p => {
+          const total = p.votesFor + p.votesAgainst;
+          const forPct = total > 0 ? (p.votesFor / total * 100) : 0;
+          const againstPct = total > 0 ? (p.votesAgainst / total * 100) : 0;
+          return '<tr>' +
+            '<td>' + p.id + '</td>' +
+            '<td><strong>' + p.purpose + '</strong><br/><span style="color:#888;font-size:0.7rem;">' + (p.description||'').slice(0,60) + '</span></td>' +
+            '<td>' + (p.researcher||'').slice(0,10) + '...</td>' +
+            '<td>' + p.durationDays + 'd</td>' +
+            '<td>' + p.votesFor + ' / ' + p.votesAgainst +
+              '<div class="vote-bar"><div class="vote-for-bar" style="width:' + forPct + '%"></div><div class="vote-against-bar" style="width:' + againstPct + '%"></div><div class="vote-empty"></div></div></td>' +
+            '<td><span class="tag ' + (statusTags[p.status]||'') + '">' + (statusLabels[p.status]||'?') + '</span></td>' +
+            '<td>' + (p.status === 0 ? '<span style="color:#888;font-size:0.7rem;">vote below</span>' : '-') + '</td>' +
+          '</tr>';
+        }).join('');
+      } catch(e) {}
+    }
+
+    async function fetchMembers() {
+      try {
+        const r = await fetch(API + '/members');
+        const d = await r.json();
+        const tb = document.getElementById('memberTable');
+        if (!d.members?.length) return;
+        tb.innerHTML = d.members.map(m =>
+          '<tr><td>' + m.address.slice(0,12) + '...</td><td>' + m.channelCount + '</td><td>' + m.sampleRate + ' Hz</td><td>' + (m.deidentified ? 'Yes' : 'No') + '</td><td>' + new Date(m.joinedAt*1000).toLocaleDateString() + '</td></tr>'
+        ).join('');
+      } catch(e) {}
     }
 
     async function fetchEvents() {
       try {
         const r = await fetch(API + '/events');
         const d = await r.json();
-        const tbody = document.getElementById('eventLog');
-        if (d.events.length === 0) return;
-        tbody.innerHTML = d.events.reverse().map(e => {
-          const tagClass = e.type === 'DataRegistered' ? 'tag-registered' :
-                          e.type === 'ConsentGranted' ? 'tag-granted' : 'tag-revoked';
-          return '<tr>' +
-            '<td><span class="tag ' + tagClass + '">' + e.type.replace('Consent','').replace('Data','') + '</span></td>' +
-            '<td>' + e.dataId.slice(0,10) + '...</td>' +
-            '<td>' + (e.researcher ? e.researcher.slice(0,10) + '...' : '-') + '</td>' +
-            '<td><a href="https://evm-testnet.flowscan.io/tx/' + e.txHash + '" target="_blank">' + e.txHash.slice(0,10) + '...</a></td>' +
-            '<td>' + new Date(e.timestamp).toLocaleTimeString() + '</td>' +
-          '</tr>';
-        }).join('');
-      } catch(e) { console.error(e); }
+        const tb = document.getElementById('eventLog');
+        if (!d.events?.length) return;
+        tb.innerHTML = d.events.reverse().map(e =>
+          '<tr><td><span class="tag tag-active">' + e.type + '</span></td>' +
+          '<td style="font-size:0.7rem;">' + JSON.stringify(e.data).slice(0,60) + '</td>' +
+          '<td><a href="https://evm-testnet.flowscan.io/tx/' + e.txHash + '" target="_blank">' + e.txHash.slice(0,10) + '...</a></td>' +
+          '<td>' + new Date(e.timestamp).toLocaleTimeString() + '</td></tr>'
+        ).join('');
+      } catch(e) {}
     }
 
-    function showResult(id, data, isError) {
-      const el = document.getElementById(id);
-      el.style.display = 'block';
-      el.className = 'result ' + (isError ? 'error' : 'success');
-      el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    }
-
-    async function uploadData() {
+    async function joinCoop() {
       try {
-        const data = document.getElementById('eegData').value;
-        const filename = document.getElementById('filename').value || 'sample-eeg.csv';
-        const body = data ? { data, filename } : { filename };
-        const r = await fetch(API + '/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        const d = await r.json();
-        showResult('uploadResult', d, !d.success);
-        if (d.dataId) {
-          document.getElementById('consentDataId').value = d.dataId;
-          document.getElementById('decryptDataId').value = d.dataId;
-        }
-        fetchHealth(); fetchEvents();
-      } catch(e) { showResult('uploadResult', e.message, true); }
+        const r = await fetch(API + '/join', { method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ privateKey: document.getElementById('joinKey').value }) });
+        show('joinResult', await r.json(), !r.ok); refresh();
+      } catch(e) { show('joinResult', e.message, true); }
     }
 
-    async function grantConsent() {
+    async function submitProposal() {
       try {
-        const dataId = document.getElementById('consentDataId').value;
-        const researcher = document.getElementById('researcherAddr').value;
-        const r = await fetch(API + '/consent/grant', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataId, researcher }),
-        });
-        const d = await r.json();
-        showResult('consentResult', d, !d.success);
-        fetchHealth(); fetchEvents();
-      } catch(e) { showResult('consentResult', e.message, true); }
+        const r = await fetch(API + '/proposal', { method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            privateKey: document.getElementById('propKey').value,
+            purpose: document.getElementById('propPurpose').value,
+            description: document.getElementById('propDesc').value,
+            durationDays: parseInt(document.getElementById('propDuration').value),
+          }) });
+        show('propResult', await r.json(), !r.ok); refresh();
+      } catch(e) { show('propResult', e.message, true); }
     }
 
-    async function revokeConsent() {
+    async function castVote(support) {
       try {
-        const dataId = document.getElementById('consentDataId').value;
-        const researcher = document.getElementById('researcherAddr').value;
-        const r = await fetch(API + '/consent/revoke', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataId, researcher }),
-        });
-        const d = await r.json();
-        showResult('consentResult', d, !d.success);
-        fetchHealth(); fetchEvents();
-      } catch(e) { showResult('consentResult', e.message, true); }
+        const r = await fetch(API + '/vote', { method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            privateKey: document.getElementById('voteKey').value,
+            proposalId: parseInt(document.getElementById('voteId').value),
+            support,
+          }) });
+        show('voteResult', await r.json(), !r.ok); refresh();
+      } catch(e) { show('voteResult', e.message, true); }
     }
 
-    async function checkConsent() {
+    async function execProposal() {
       try {
-        const dataId = document.getElementById('consentDataId').value;
-        const r = await fetch(API + '/consent/' + dataId);
-        const d = await r.json();
-        showResult('consentResult', d, !!d.error);
-      } catch(e) { showResult('consentResult', e.message, true); }
+        const r = await fetch(API + '/execute', { method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            privateKey: document.getElementById('execKey').value,
+            proposalId: parseInt(document.getElementById('execId').value),
+          }) });
+        show('execResult', await r.json(), !r.ok); refresh();
+      } catch(e) { show('execResult', e.message, true); }
     }
 
-    async function decryptData() {
+    async function accessData() {
       try {
-        const dataId = document.getElementById('decryptDataId').value;
-        const researcherPrivateKey = document.getElementById('researcherKey').value;
-        const r = await fetch(API + '/decrypt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ dataId, researcherPrivateKey }),
-        });
-        const d = await r.json();
-        showResult('decryptResult', d, !d.success);
-      } catch(e) { showResult('decryptResult', e.message, true); }
+        const r = await fetch(API + '/decrypt', { method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ proposalId: parseInt(document.getElementById('decryptId').value) }) });
+        show('decryptResult', await r.json(), !r.ok);
+      } catch(e) { show('decryptResult', e.message, true); }
     }
 
-    fetchHealth();
-    fetchEvents();
-    setInterval(() => { fetchHealth(); fetchEvents(); }, 10000);
+    function refresh() { fetchHealth(); fetchProposals(); fetchMembers(); fetchEvents(); }
+    refresh();
+    setInterval(refresh, 8000);
   </script>
 </body>
 </html>`;
