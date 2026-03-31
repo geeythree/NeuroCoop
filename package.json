@@ -1,0 +1,41 @@
+{
+  "name": "neuroconsent",
+  "version": "1.0.0",
+  "description": "Privacy-preserving consent framework for neural data on the blockchain",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": [
+    "neurotech",
+    "consent",
+    "privacy",
+    "blockchain",
+    "flow",
+    "lit-protocol",
+    "storacha",
+    "eeg",
+    "bci",
+    "pl-genesis"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^10.0.0",
+    "@fastify/multipart": "^9.0.0",
+    "@lit-protocol/lit-node-client": "^7.0.0",
+    "@lit-protocol/constants": "^7.0.0",
+    "@lit-protocol/auth-helpers": "^7.0.0",
+    "@storacha/client": "^1.0.0",
+    "dotenv": "^16.6.1",
+    "fastify": "^5.1.0",
+    "viem": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.0.0"
+  }
+}
