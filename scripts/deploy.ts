@@ -1,7 +1,7 @@
 import { createPublicClient, createWalletClient, http, type Chain } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import solc from 'solc';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'fs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -37,12 +37,12 @@ async function main() {
   }
 
   // Compile contract
-  console.log('\nCompiling NeuroCoop_flat.sol...');
-  const source = readFileSync('./contracts/NeuroCoop_flat.sol', 'utf-8');
+  console.log('\nCompiling NeuroCoop.sol...');
+  const source = readFileSync('./contracts/NeuroCoop.sol', 'utf-8');
 
   const input = {
     language: 'Solidity',
-    sources: { 'NeuroCoop_flat.sol': { content: source } },
+    sources: { 'NeuroCoop.sol': { content: source } },
     settings: {
       outputSelection: { '*': { '*': ['abi', 'evm.bytecode.object'] } },
       optimizer: { enabled: true, runs: 200 },
@@ -60,7 +60,7 @@ async function main() {
     }
   }
 
-  const contract = output.contracts['NeuroCoop_flat.sol']['NeuroCoop'];
+  const contract = output.contracts['NeuroCoop.sol']['NeuroCoop'];
   const abi = contract.abi;
   const bytecode = '0x' + contract.evm.bytecode.object;
 
@@ -85,7 +85,24 @@ async function main() {
   console.log(`Gas used: ${receipt.gasUsed}`);
   console.log(`Explorer: https://evm-testnet.flowscan.io/address/${receipt.contractAddress}`);
 
-  // Update .env
+  // Write deployment output to file
+  const deploymentOutput = {
+    address: receipt.contractAddress,
+    abi,
+    deployer: account.address,
+    blockNumber: Number(receipt.blockNumber),
+    gasUsed: Number(receipt.gasUsed),
+    txHash: hash,
+    timestamp: new Date().toISOString(),
+    network: 'Flow EVM Testnet (545)',
+  };
+  mkdirSync('./deployments', { recursive: true });
+  writeFileSync(
+    './deployments/latest.json',
+    JSON.stringify(deploymentOutput, null, 2)
+  );
+  console.log(`\nDeployment output written to deployments/latest.json`);
+
   console.log(`\nAdd to your .env:`);
   console.log(`COOP_ADDRESS=${receipt.contractAddress}`);
 }

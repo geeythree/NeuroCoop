@@ -1,4 +1,4 @@
-import Fastify from 'fastify';
+import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
 import { readFileSync } from 'fs';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -11,6 +11,11 @@ import { generateCoopReceipt } from './receipt.js';
 import { getDashboardHtml } from './dashboard.js';
 import { DataCategory, PROPOSAL_STATUS_LABELS } from './types.js';
 import type { EncryptedUpload, ConsentReceipt } from './types.js';
+
+/** Structured error response helper */
+function errorResponse(message: string, details?: Record<string, unknown>) {
+  return { success: false, error: message, ...details };
+}
 
 async function main() {
   const config = createConfig();
@@ -60,8 +65,8 @@ async function main() {
   const startTime = Date.now();
 
   // --- Server ---
-  const server = Fastify({ logger: false, bodyLimit: 2_097_152 });
-  await server.register(cors, { origin: true });
+  const server = Fastify({ logger: true, bodyLimit: 2_097_152 });
+  await server.register(cors, { origin: ['http://localhost:3000', 'http://127.0.0.1:3000'] });
 
   server.get('/', async (_req, reply) => {
     reply.type('text/html').send(getDashboardHtml(config.coopAddress, ownerAddress));
@@ -95,10 +100,29 @@ async function main() {
    */
   server.post<{
     Body: { privateKey: string; data?: string; filename?: string; deidentify?: boolean; noiseEpsilon?: number };
-  }>('/join', async (req, reply) => {
+  }>('/join', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['privateKey'],
+        properties: {
+          privateKey: { type: 'string' },
+          data: { type: 'string' },
+          filename: { type: 'string' },
+          deidentify: { type: 'boolean' },
+          noiseEpsilon: { type: 'number' },
+        },
+      },
+    },
+  }, async (req, reply) => {
     try {
       const { privateKey } = req.body;
-      if (!privateKey) { reply.code(400); return { error: 'Required: privateKey' }; }
+      if (!privateKey) { reply.code(400); return errorResponse('Required: privateKey'); }
+
+      if (req.body.noiseEpsilon !== undefined && req.body.noiseEpsilon <= 0) {
+        reply.code(400);
+        return errorResponse('noiseEpsilon must be greater than 0');
+      }
 
       const memberAddress = coop.registerWallet(privateKey as `0x${string}`);
       registeredWallets.set(memberAddress.toLowerCase(), privateKey);
@@ -168,7 +192,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return errorResponse(err instanceof Error ? err.message : String(err));
     }
   });
 
@@ -177,12 +201,26 @@ async function main() {
    */
   server.post<{
     Body: { privateKey: string; purpose: string; description: string; durationDays: number; categories?: number[] };
-  }>('/proposal', async (req, reply) => {
+  }>('/proposal', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['privateKey', 'purpose', 'description', 'durationDays'],
+        properties: {
+          privateKey: { type: 'string' },
+          purpose: { type: 'string' },
+          description: { type: 'string' },
+          durationDays: { type: 'number' },
+          categories: { type: 'array', items: { type: 'number' } },
+        },
+      },
+    },
+  }, async (req, reply) => {
     try {
       const { privateKey, purpose, description, durationDays } = req.body;
       if (!privateKey || !purpose || !description || !durationDays) {
         reply.code(400);
-        return { error: 'Required: privateKey, purpose, description, durationDays' };
+        return errorResponse('Required: privateKey, purpose, description, durationDays');
       }
 
       const researcherAddress = coop.registerWallet(privateKey as `0x${string}`);
@@ -206,7 +244,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return errorResponse(err instanceof Error ? err.message : String(err));
     }
   });
 
@@ -215,12 +253,24 @@ async function main() {
    */
   server.post<{
     Body: { privateKey: string; proposalId: number; support: boolean };
-  }>('/vote', async (req, reply) => {
+  }>('/vote', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['privateKey', 'proposalId', 'support'],
+        properties: {
+          privateKey: { type: 'string' },
+          proposalId: { type: 'number' },
+          support: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (req, reply) => {
     try {
       const { privateKey, proposalId, support } = req.body;
       if (!privateKey || proposalId === undefined || support === undefined) {
         reply.code(400);
-        return { error: 'Required: privateKey, proposalId, support (boolean)' };
+        return errorResponse('Required: privateKey, proposalId, support (boolean)');
       }
 
       const voterAddress = coop.registerWallet(privateKey as `0x${string}`);
@@ -239,7 +289,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return errorResponse(err instanceof Error ? err.message : String(err));
     }
   });
 
@@ -248,19 +298,30 @@ async function main() {
    */
   server.post<{
     Body: { privateKey: string; proposalId: number };
-  }>('/execute', async (req, reply) => {
+  }>('/execute', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['privateKey', 'proposalId'],
+        properties: {
+          privateKey: { type: 'string' },
+          proposalId: { type: 'number' },
+        },
+      },
+    },
+  }, async (req, reply) => {
     try {
       const { privateKey, proposalId } = req.body;
       if (!privateKey || proposalId === undefined) {
         reply.code(400);
-        return { error: 'Required: privateKey, proposalId' };
+        return errorResponse('Required: privateKey, proposalId');
       }
 
       const callerAddress = coop.registerWallet(privateKey as `0x${string}`);
       const txHash = await coop.executeProposal(callerAddress, proposalId);
       const proposal = await coop.getProposal(proposalId);
 
-      const approved = proposal.status === 3; // Executed
+      const approved = proposal.status === 2; // Executed (enum value after removing Approved)
       let receipt: ConsentReceipt | null = null;
 
       if (approved) {
@@ -298,7 +359,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return errorResponse(err instanceof Error ? err.message : String(err));
     }
   });
 
@@ -306,29 +367,44 @@ async function main() {
    * POST /decrypt — Researcher accesses pooled data if proposal was approved.
    */
   server.post<{
-    Body: { proposalId: number };
-  }>('/decrypt', async (req, reply) => {
+    Body: { proposalId: number; researcherAddress: string };
+  }>('/decrypt', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['proposalId', 'researcherAddress'],
+        properties: {
+          proposalId: { type: 'number' },
+          researcherAddress: { type: 'string' },
+        },
+      },
+    },
+  }, async (req, reply) => {
     try {
-      const { proposalId } = req.body;
-      if (proposalId === undefined) {
+      const { proposalId, researcherAddress } = req.body;
+      if (proposalId === undefined || !researcherAddress) {
         reply.code(400);
-        return { success: false, error: 'Required: proposalId' };
+        return errorResponse('Required: proposalId, researcherAddress');
       }
 
-      const hasAccess = await coop.hasAccess(proposalId);
-      if (!hasAccess) {
-        const proposal = await coop.getProposal(proposalId);
+      // Verify the requester matches the proposal researcher
+      const proposal = await coop.getProposal(proposalId);
+      if (proposal.researcher.toLowerCase() !== researcherAddress.toLowerCase()) {
         reply.code(403);
-        return {
-          success: false,
-          error: proposal.status === 2
+        return errorResponse('Researcher address does not match proposal researcher', { proposalId });
+      }
+
+      const hasAccess = await coop.hasAccess(proposalId, researcherAddress);
+      if (!hasAccess) {
+        reply.code(403);
+        return errorResponse(
+          proposal.status === 1
             ? 'Proposal was REJECTED by the cooperative. Access denied.'
             : proposal.accessExpiresAt > 0 && Date.now() / 1000 > proposal.accessExpiresAt
               ? 'Access has EXPIRED.'
               : 'Proposal has not been approved yet.',
-          proposalId,
-          status: PROPOSAL_STATUS_LABELS[proposal.status],
-        };
+          { proposalId, status: PROPOSAL_STATUS_LABELS[proposal.status] }
+        );
       }
 
       // Collect all member data
@@ -346,8 +422,6 @@ async function main() {
         pooledData.push({ member: addr.slice(0, 10) + '...', data: decrypted });
       }
 
-      const proposal = await coop.getProposal(proposalId);
-
       return {
         success: true,
         proposalId,
@@ -359,7 +433,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
+      return errorResponse(err instanceof Error ? err.message : String(err));
     }
   });
 
@@ -376,8 +450,8 @@ async function main() {
 
   server.get<{ Params: { id: string } }>('/proposal/:id', async (req) => {
     const proposal = await coop.getProposal(parseInt(req.params.id));
-    const hasAccess = await coop.hasAccess(parseInt(req.params.id));
-    return { proposal, hasAccess, receipt: receipts.get(parseInt(req.params.id)) || null };
+    const access = await coop.hasAccess(parseInt(req.params.id), proposal.researcher);
+    return { proposal, hasAccess: access, receipt: receipts.get(parseInt(req.params.id)) || null };
   });
 
   server.get('/members', async () => {

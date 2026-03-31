@@ -21,15 +21,13 @@ export const BCI_PIPELINE_STAGES: Record<DataCategory, string> = {
 
 export enum ProposalStatus {
   Active = 0,
-  Approved = 1,
-  Rejected = 2,
-  Executed = 3,
-  Expired = 4,
+  Rejected = 1,
+  Executed = 2,
+  Expired = 3,
 }
 
 export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
   [ProposalStatus.Active]: 'Voting Open',
-  [ProposalStatus.Approved]: 'Approved',
   [ProposalStatus.Rejected]: 'Rejected',
   [ProposalStatus.Executed]: 'Access Granted',
   [ProposalStatus.Expired]: 'Expired',
@@ -106,7 +104,7 @@ export interface ConsentReceipt {
   governance: {
     votesFor: number;
     votesAgainst: number;
-    totalMembers: number;
+    memberCountAtProposalCreation: number;
     mechanism: 'one-member-one-vote (cognitive equality)';
   };
   proofs: {

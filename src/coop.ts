@@ -120,7 +120,7 @@ export class CoopClient {
       args: [purpose, description, BigInt(durationDays), categories],
       chain: this.chain,
     });
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
     const proposalId = countBefore; // 0-indexed
 
     console.log(`[coop] Proposal #${proposalId} created by ${researcherAddress}: "${purpose}" tx: ${hash}`);
@@ -130,7 +130,7 @@ export class CoopClient {
       data: { proposalId, researcher: researcherAddress, purpose, durationDays },
       timestamp: Date.now(),
       txHash: hash,
-      blockNumber: 0,
+      blockNumber: Number(receipt.blockNumber),
     });
     return { txHash: hash, proposalId };
   }
@@ -144,7 +144,7 @@ export class CoopClient {
       args: [BigInt(proposalId), support],
       chain: this.chain,
     });
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
 
     console.log(`[coop] Vote: ${voterAddress} voted ${support ? 'FOR' : 'AGAINST'} proposal #${proposalId} tx: ${hash}`);
 
@@ -153,7 +153,7 @@ export class CoopClient {
       data: { proposalId, voter: voterAddress, support },
       timestamp: Date.now(),
       txHash: hash,
-      blockNumber: 0,
+      blockNumber: Number(receipt.blockNumber),
     });
     return hash;
   }
@@ -167,10 +167,10 @@ export class CoopClient {
       args: [BigInt(proposalId)],
       chain: this.chain,
     });
-    await this.publicClient.waitForTransactionReceipt({ hash });
+    const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
 
     const proposal = await this.getProposal(proposalId);
-    const eventType = proposal.status === 3 ? 'ProposalExecuted' : 'ProposalRejected';
+    const eventType = proposal.status === 2 ? 'ProposalExecuted' : 'ProposalRejected';
     console.log(`[coop] Proposal #${proposalId} ${eventType === 'ProposalExecuted' ? 'APPROVED' : 'REJECTED'} tx: ${hash}`);
 
     this.events.push({
@@ -178,7 +178,7 @@ export class CoopClient {
       data: { proposalId },
       timestamp: Date.now(),
       txHash: hash,
-      blockNumber: 0,
+      blockNumber: Number(receipt.blockNumber),
     });
     return hash;
   }
@@ -198,12 +198,12 @@ export class CoopClient {
 
   // --- View Functions ---
 
-  async hasAccess(proposalId: number): Promise<boolean> {
+  async hasAccess(proposalId: number, researcherAddress: string): Promise<boolean> {
     return await this.publicClient.readContract({
       address: this.coopAddress,
       abi: NEUROCOOP_ABI,
       functionName: 'hasAccess',
-      args: [BigInt(proposalId)],
+      args: [BigInt(proposalId), researcherAddress as `0x${string}`],
     }) as boolean;
   }
 
@@ -226,26 +226,30 @@ export class CoopClient {
   }
 
   async getProposal(proposalId: number): Promise<Proposal> {
-    const r = await this.publicClient.readContract({
-      address: this.coopAddress,
-      abi: NEUROCOOP_ABI,
-      functionName: 'getProposal',
-      args: [BigInt(proposalId)],
-    }) as unknown as any[];
+    const [r, categories] = await Promise.all([
+      this.publicClient.readContract({
+        address: this.coopAddress,
+        abi: NEUROCOOP_ABI,
+        functionName: 'getProposal',
+        args: [BigInt(proposalId)],
+      }) as Promise<unknown>,
+      this.getProposalCategories(proposalId),
+    ]);
+    const result = r as any[];
     return {
       id: proposalId,
-      researcher: r[0],
-      purpose: r[1],
-      description: r[2],
-      durationDays: Number(r[3]),
-      votesFor: Number(r[4]),
-      votesAgainst: Number(r[5]),
-      totalVoters: Number(r[6]),
-      status: Number(r[7]) as ProposalStatus,
-      createdAt: Number(r[8]),
-      deadline: Number(r[9]),
-      accessExpiresAt: Number(r[10]),
-      categories: [],
+      researcher: result[0],
+      purpose: result[1],
+      description: result[2],
+      durationDays: Number(result[3]),
+      votesFor: Number(result[4]),
+      votesAgainst: Number(result[5]),
+      totalVoters: Number(result[6]),
+      status: Number(result[7]) as ProposalStatus,
+      createdAt: Number(result[8]),
+      deadline: Number(result[9]),
+      accessExpiresAt: Number(result[10]),
+      categories,
     };
   }
 
@@ -275,6 +279,24 @@ export class CoopClient {
       abi: NEUROCOOP_ABI,
       functionName: 'getMemberList',
     }) as string[];
+  }
+
+  async getActiveMembers(): Promise<string[]> {
+    return await this.publicClient.readContract({
+      address: this.coopAddress,
+      abi: NEUROCOOP_ABI,
+      functionName: 'getActiveMembers',
+    }) as string[];
+  }
+
+  async getProposalCategories(proposalId: number): Promise<number[]> {
+    const result = await this.publicClient.readContract({
+      address: this.coopAddress,
+      abi: NEUROCOOP_ABI,
+      functionName: 'getProposalCategories',
+      args: [BigInt(proposalId)],
+    }) as number[];
+    return Array.from(result).map(Number);
   }
 
   async getBalance(address: string): Promise<string> {

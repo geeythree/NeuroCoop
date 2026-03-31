@@ -48,17 +48,21 @@ export function parseEegMetadata(csvData: string): EegMetadata {
 /**
  * De-identify EEG data by:
  * 1. Removing any PII headers (patient name, ID, date of birth)
- * 2. Adding Gaussian noise for differential privacy (epsilon-bounded)
- * 3. Replacing timestamps with relative offsets
- * 4. Stripping labels if not consented
+ * 2. Adding Laplace noise injection for statistical privacy (epsilon-bounded)
+ *    Note: This is noise injection, not formal differential privacy.
+ *    True DP would require sensitivity calibration per query.
+ * 3. Clipping channel values to a bounded range before noise addition
+ * 4. Replacing timestamps with relative offsets
+ * 5. Stripping labels if not consented
  */
 export function deidentifyEeg(
   csvData: string,
   options: {
     stripLabels?: boolean;
     addNoise?: boolean;
-    noiseEpsilon?: number; // differential privacy parameter
+    noiseEpsilon?: number; // noise scale parameter (higher = less noise)
     removeMetadata?: boolean;
+    clipRange?: [number, number]; // min/max for channel value clipping
   } = {}
 ): { data: string; modifications: string[] } {
   const {
@@ -66,7 +70,12 @@ export function deidentifyEeg(
     addNoise = true,
     noiseEpsilon = 1.0,
     removeMetadata = true,
+    clipRange = [-500, 500], // microvolts typical EEG range
   } = options;
+
+  if (addNoise && noiseEpsilon <= 0) {
+    throw new Error('noiseEpsilon must be greater than 0');
+  }
 
   const modifications: string[] = [];
   const lines = csvData.trim().split('\n');
@@ -118,12 +127,14 @@ export function deidentifyEeg(
       if (addNoise && i !== timestampIdx && i !== labelIdx) {
         const num = parseFloat(val);
         if (!isNaN(num)) {
-          // Laplace noise for differential privacy
+          // Clip channel value to bounded range before noise addition
+          const clipped = Math.max(clipRange[0], Math.min(clipRange[1], num));
+          // Laplace noise injection (not formal DP — see function docs)
           const sensitivity = 1.0;
           const scale = sensitivity / noiseEpsilon;
           const u = Math.random() - 0.5;
           const noise = -scale * Math.sign(u) * Math.log(1 - 2 * Math.abs(u));
-          return (num + noise).toFixed(1);
+          return (clipped + noise).toFixed(1);
         }
       }
 
@@ -135,7 +146,7 @@ export function deidentifyEeg(
     modifications.push('Timestamps converted to relative offsets');
   }
   if (addNoise) {
-    modifications.push(`Differential privacy applied (Laplace noise, ε=${noiseEpsilon})`);
+    modifications.push(`Laplace noise injection applied (ε=${noiseEpsilon}, clip range: [${clipRange[0]}, ${clipRange[1]}])`);
   }
 
   const output = [outputHeaders.join(','), ...outputRows].join('\n');

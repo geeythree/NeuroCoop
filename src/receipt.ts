@@ -41,7 +41,7 @@ export function generateCoopReceipt(params: {
     governance: {
       votesFor: proposal.votesFor,
       votesAgainst: proposal.votesAgainst,
-      totalMembers: proposal.totalVoters,
+      memberCountAtProposalCreation: proposal.totalVoters,
       mechanism: 'one-member-one-vote (cognitive equality)',
     },
     proofs: {

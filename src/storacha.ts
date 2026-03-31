@@ -32,10 +32,14 @@ export async function uploadEncrypted(
 ): Promise<string> {
   console.log(`[storacha] Uploading encrypted file: ${filename} (${encryptedData.length} bytes)`);
 
-  const blob = new Blob([Buffer.from(encryptedData)], { type: 'application/octet-stream' });
-  const file = new File([blob], `${filename}.encrypted`);
-
-  const cid = await client.uploadFile(file);
+  // Convert to a standard ArrayBuffer to satisfy TypeScript's BlobPart type
+  const arrayBuffer = encryptedData.buffer.slice(
+    encryptedData.byteOffset,
+    encryptedData.byteOffset + encryptedData.byteLength
+  ) as ArrayBuffer;
+  const blob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+  // Storacha client accepts Blob directly via uploadFile
+  const cid = await client.uploadFile(blob);
   const cidStr = cid.toString();
 
   console.log(`[storacha] Uploaded to IPFS: ${cidStr}`);

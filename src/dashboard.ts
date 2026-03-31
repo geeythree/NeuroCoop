@@ -169,6 +169,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
     <p class="desc">If your proposal was approved, access the cooperative's pooled de-identified EEG data.</p>
     <div class="form-row">
       <input id="decryptId" type="number" placeholder="Approved Proposal #" style="max-width:140px;" />
+      <input id="decryptAddr" placeholder="Researcher address (0x...)" />
       <button class="secondary" onclick="accessData()">Request Data Access</button>
     </div>
     <div id="decryptResult" class="result" style="display:none;"></div>
@@ -200,8 +201,8 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
 
   <script>
     const API = '';
-    const statusLabels = ['Voting Open', 'Approved', 'Rejected', 'Access Granted', 'Expired'];
-    const statusTags = ['tag-active', 'tag-approved', 'tag-rejected', 'tag-executed', 'tag-rejected'];
+    const statusLabels = ['Voting Open', 'Rejected', 'Access Granted', 'Expired'];
+    const statusTags = ['tag-active', 'tag-rejected', 'tag-executed', 'tag-rejected'];
 
     function show(id, data, err) {
       const el = document.getElementById(id);
@@ -318,7 +319,10 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
     async function accessData() {
       try {
         const r = await fetch(API + '/decrypt', { method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ proposalId: parseInt(document.getElementById('decryptId').value) }) });
+          body: JSON.stringify({
+            proposalId: parseInt(document.getElementById('decryptId').value),
+            researcherAddress: document.getElementById('decryptAddr').value,
+          }) });
         show('decryptResult', await r.json(), !r.ok);
       } catch(e) { show('decryptResult', e.message, true); }
     }

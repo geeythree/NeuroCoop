@@ -11,11 +11,26 @@ export interface Config {
 }
 
 export function createConfig(): Config {
+  const coopAddress = process.env.COOP_ADDRESS || '';
+  const ownerPrivateKey = process.env.OWNER_PRIVATE_KEY || '';
+
+  if (!coopAddress || !coopAddress.startsWith('0x') || coopAddress.length !== 42) {
+    throw new Error(
+      `Invalid COOP_ADDRESS: "${coopAddress}". Must be a 42-character hex address starting with 0x. Deploy the contract first.`
+    );
+  }
+
+  if (!ownerPrivateKey || !ownerPrivateKey.startsWith('0x') || ownerPrivateKey.length !== 66) {
+    throw new Error(
+      `Invalid OWNER_PRIVATE_KEY: must be a 66-character hex string starting with 0x.`
+    );
+  }
+
   return {
     flowRpcUrl: process.env.FLOW_RPC_URL || 'https://testnet.evm.nodes.onflow.org',
     flowChainId: parseInt(process.env.FLOW_CHAIN_ID || '545', 10),
-    coopAddress: (process.env.COOP_ADDRESS || '') as `0x${string}`,
-    ownerPrivateKey: (process.env.OWNER_PRIVATE_KEY || '') as `0x${string}`,
+    coopAddress: coopAddress as `0x${string}`,
+    ownerPrivateKey: ownerPrivateKey as `0x${string}`,
     storachaEmail: process.env.STORACHA_EMAIL || '',
     port: Number(process.env.PORT ?? 3000),
   };
@@ -86,7 +101,10 @@ export const NEUROCOOP_ABI = [
     name: 'hasAccess',
     type: 'function',
     stateMutability: 'view',
-    inputs: [{ name: 'proposalId', type: 'uint256' }],
+    inputs: [
+      { name: 'proposalId', type: 'uint256' },
+      { name: 'requester', type: 'address' },
+    ],
     outputs: [{ name: '', type: 'bool' }],
   },
   {
@@ -143,6 +161,20 @@ export const NEUROCOOP_ABI = [
     stateMutability: 'view',
     inputs: [],
     outputs: [{ name: '', type: 'address[]' }],
+  },
+  {
+    name: 'getActiveMembers',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address[]' }],
+  },
+  {
+    name: 'getProposalCategories',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'proposalId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint8[]' }],
   },
   {
     name: 'hasVoted',
