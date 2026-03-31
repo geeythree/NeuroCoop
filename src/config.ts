@@ -6,7 +6,8 @@ export interface Config {
   readonly filecoinChainId: number;
   readonly filecoinNetwork: 'calibration' | 'mainnet';
   readonly filecoinExplorerUrl: string;
-  readonly coopAddress: `0x${string}`;
+  readonly coopAddress: `0x${string}` | '';
+  readonly contractReady: boolean;
   readonly ownerPrivateKey: `0x${string}`;
   readonly storachaEmail: string;
   readonly port: number;
@@ -18,9 +19,12 @@ export function createConfig(): Config {
   const ownerPrivateKey = process.env.OWNER_PRIVATE_KEY || '';
   const network = (process.env.FILECOIN_NETWORK || 'calibration') as 'calibration' | 'mainnet';
 
-  if (!coopAddress || !coopAddress.startsWith('0x') || coopAddress.length !== 42) {
-    throw new Error(
-      `Invalid COOP_ADDRESS: "${coopAddress}". Must be a 42-character hex address starting with 0x. Deploy NeuroCoop.sol to Filecoin ${network} first.`
+  const contractReady = !!coopAddress && coopAddress.startsWith('0x') && coopAddress.length === 42;
+
+  if (!contractReady) {
+    console.warn(
+      `[config] COOP_ADDRESS not set or invalid — contract endpoints will be unavailable. ` +
+      `Deploy NeuroCoop.sol to Filecoin ${network} and set COOP_ADDRESS to activate.`
     );
   }
 
@@ -42,7 +46,8 @@ export function createConfig(): Config {
     filecoinExplorerUrl: isMainnet
       ? 'https://filfox.info/en/tx'
       : 'https://calibration.filfox.info/en/tx',
-    coopAddress: coopAddress as `0x${string}`,
+    coopAddress: coopAddress as `0x${string}` | '',
+    contractReady,
     ownerPrivateKey: ownerPrivateKey as `0x${string}`,
     storachaEmail: process.env.STORACHA_EMAIL || '',
     port: Number(process.env.PORT ?? 3000),

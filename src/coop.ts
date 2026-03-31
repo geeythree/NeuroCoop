@@ -54,7 +54,7 @@ export class CoopClient {
 
   constructor(config: Config) {
     this.chain = config.filecoinNetwork === 'mainnet' ? filecoinMainnet : filecoinCalibration;
-    this.coopAddress = config.coopAddress;
+    this.coopAddress = config.coopAddress as `0x${string}`;
     this.rpcUrl = config.filecoinRpcUrl;
 
     this.publicClient = createPublicClient({

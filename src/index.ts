@@ -39,21 +39,38 @@ async function main() {
   console.log('cognition, coordination, and computation.');
   console.log('');
 
-  const coop = new CoopClient(config);
-  const ownerAddress = coop.registerWallet(config.ownerPrivateKey);
+  const coop = config.contractReady ? new CoopClient(config) : null;
+  const ownerAddress = coop ? coop.registerWallet(config.ownerPrivateKey) : 'CONTRACT_NOT_DEPLOYED';
+
+  // Helper — returns 503 for any endpoint that requires the deployed contract
+  function requireContract(reply: any): boolean {
+    if (!coop || !config.contractReady) {
+      reply.code(503);
+      reply.send({
+        success: false,
+        error: 'Contract not yet deployed',
+        setup: `Deploy NeuroCoop.sol to Filecoin ${config.filecoinNetwork} (Chain ID ${config.filecoinChainId}), then set COOP_ADDRESS in Railway variables.`,
+        faucet: 'https://faucet.calibnet.chainsafe-fil.io/',
+        deployVia: 'https://remix.ethereum.org',
+        walletAddress: '0x96D5da03A0E308cEcEC7a44545E4F1f7dfa8ecEF',
+      });
+      return false;
+    }
+    return true;
+  }
   const ownerPublicKey = getPublicKey(config.ownerPrivateKey);
 
   const networkLabel = config.filecoinNetwork === 'mainnet'
     ? `Filecoin Mainnet (${config.filecoinChainId})`
     : `Filecoin Calibration testnet (${config.filecoinChainId})`;
   console.log(`[filecoin] Deployer: ${ownerAddress}`);
-  console.log(`[filecoin] Contract: ${config.coopAddress}`);
+  console.log(`[filecoin] Contract: ${config.contractReady ? config.coopAddress : 'NOT DEPLOYED — set COOP_ADDRESS'}`);
   console.log(`[filecoin] Chain: ${networkLabel}`);
   console.log(`[filecoin] Explorer: ${config.filecoinExplorerUrl}`);
   console.log(`[crypto] ECIES (secp256k1 + AES-256-CBC)`);
 
-  const balance = await coop.getBalance(ownerAddress);
-  console.log(`[filecoin] Balance: ${balance} FIL`);
+  const balance = coop ? await coop.getBalance(ownerAddress).catch(() => '?') : '?';
+  console.log(`[filecoin] Balance: ${balance} FIL${balance === '?' ? ' (contract not deployed)' : ''}`);
 
   let storachaClient: Awaited<ReturnType<typeof initStoracha>> | null = null;
   try {
@@ -102,6 +119,7 @@ async function main() {
    *     - Kept for backwards compatibility during transition
    */
   async function resolveWallet(body: any): Promise<string> {
+    if (!coop) throw new Error('Contract not deployed — set COOP_ADDRESS');
     if (body.address && body.nonce && body.signature) {
       const addr = (body.address as string).toLowerCase();
       const stored = nonceStore.get(addr);
@@ -145,14 +163,15 @@ async function main() {
   });
 
   server.get('/health', async () => {
-    const mc = await coop.getMemberCount().catch(() => 0);
-    const pc = await coop.getProposalCount().catch(() => 0);
+    const mc = coop ? await coop.getMemberCount().catch(() => 0) : 0;
+    const pc = coop ? await coop.getProposalCount().catch(() => 0) : 0;
     return {
       status: 'ok',
       project: 'NeuroCoop — Neural Data Cooperative Protocol',
       track: 'Neurotech: cognition × coordination × computation',
       uptime: Math.floor((Date.now() - metrics.startTime) / 1000),
-      contract: config.coopAddress,
+      contract: config.contractReady ? config.coopAddress : 'NOT_DEPLOYED — set COOP_ADDRESS and redeploy',
+      contractReady: config.contractReady,
       chain: `Filecoin ${config.filecoinNetwork === 'mainnet' ? 'Mainnet' : 'Calibration'} (${config.filecoinChainId})`,
       encryption: 'ECIES (secp256k1 + AES-256-CBC)',
       storage: storachaClient ? 'Storacha (IPFS/Filecoin)' : 'local',
@@ -195,6 +214,7 @@ async function main() {
       },
     },
   }, async (req, reply) => {
+    if (!requireContract(reply)) return;
     try {
       if (req.body.noiseEpsilon !== undefined && req.body.noiseEpsilon <= 0) {
         reply.code(400);
@@ -229,7 +249,7 @@ async function main() {
       }
 
       const timestamp = Math.floor(Date.now() / 1000);
-      const dataId = coop.generateDataId(memberAddress, filename, timestamp);
+      const dataId = coop!.generateDataId(memberAddress, filename, timestamp);
       const dataHash = computeDataHash(new TextEncoder().encode(processedData));
       const { encrypted } = await encryptNeuroData(pubKey, processedData);
 
@@ -245,7 +265,7 @@ async function main() {
         storachaCid = `local:${dataHash.substring(0, 16)}`;
       }
 
-      const txHash = await coop.joinCooperative(
+      const txHash = await coop!.joinCooperative(
         memberAddress, dataId, storachaCid, dataHash,
         metadata.channelCount, metadata.sampleRate, shouldDeidentify
       );
@@ -299,6 +319,7 @@ async function main() {
       },
     },
   }, async (req, reply) => {
+    if (!requireContract(reply)) return;
     try {
       const { purpose, description, durationDays } = req.body;
       if (!purpose || !description || !durationDays) {
@@ -311,7 +332,7 @@ async function main() {
         ? req.body.categories
         : [DataCategory.PROCESSED_FEATURES, DataCategory.INFERENCES];
 
-      const { txHash, proposalId } = await coop.submitProposal(
+      const { txHash, proposalId } = await coop!.submitProposal(
         researcherAddress, purpose, description, durationDays, categories
       );
 
@@ -352,6 +373,7 @@ async function main() {
       },
     },
   }, async (req, reply) => {
+    if (!requireContract(reply)) return;
     try {
       const { proposalId, support } = req.body;
       if (proposalId === undefined || support === undefined) {
@@ -360,9 +382,9 @@ async function main() {
       }
 
       const voterAddress = await resolveWallet(req.body).catch(e => { throw Object.assign(e, { status: 401 }); });
-      const txHash = await coop.vote(voterAddress, proposalId, support);
+      const txHash = await coop!.vote(voterAddress, proposalId, support);
 
-      const proposal = await coop.getProposal(proposalId);
+      const proposal = await coop!.getProposal(proposalId);
 
       return {
         success: true,
@@ -399,6 +421,7 @@ async function main() {
       },
     },
   }, async (req, reply) => {
+    if (!requireContract(reply)) return;
     try {
       const { proposalId } = req.body;
       if (proposalId === undefined) {
@@ -407,8 +430,8 @@ async function main() {
       }
 
       const callerAddress = await resolveWallet(req.body).catch(e => { throw Object.assign(e, { status: 401 }); });
-      const txHash = await coop.executeProposal(callerAddress, proposalId);
-      const proposal = await coop.getProposal(proposalId);
+      const txHash = await coop!.executeProposal(callerAddress, proposalId);
+      const proposal = await coop!.getProposal(proposalId);
 
       const approved = proposal.status === 2; // Executed (enum value after removing Approved)
       let receipt: ConsentReceipt | null = null;
@@ -480,6 +503,7 @@ async function main() {
       },
     },
   }, async (req, reply) => {
+    if (!requireContract(reply)) return;
     try {
       const { proposalId, researcherAddress, signature, message } = req.body;
       if (proposalId === undefined || !researcherAddress || !signature || !message) {
@@ -498,14 +522,14 @@ async function main() {
       const verifiedAddress = recoveredAddress;
 
       // Verify the requester matches the proposal researcher (on-chain check)
-      const proposal = await coop.getProposal(proposalId);
+      const proposal = await coop!.getProposal(proposalId);
       if (proposal.researcher.toLowerCase() !== verifiedAddress.toLowerCase()) {
         store.logAudit({ actor: verifiedAddress, action: 'ACCESS_DENIED', target: `proposal:${proposalId}`, details: 'Address mismatch', success: false });
         reply.code(403);
         return errorResponse('Researcher address does not match proposal researcher', { proposalId });
       }
 
-      const hasAccess = await coop.hasAccess(proposalId, verifiedAddress);
+      const hasAccess = await coop!.hasAccess(proposalId, verifiedAddress);
       if (!hasAccess) {
         store.logAudit({ actor: verifiedAddress, action: 'ACCESS_DENIED', target: `proposal:${proposalId}`, details: `status:${proposal.status}`, success: false });
         reply.code(403);
@@ -521,7 +545,7 @@ async function main() {
 
       // Collect pooled data — Storacha (IPFS/Filecoin) is the primary source.
       // SQLite encrypted cache is the fallback if IPFS gateways are unreachable.
-      const memberAddresses = await coop.getMemberList();
+      const memberAddresses = await coop!.getMemberList();
       const pooledData: { member: string; data: string; source: 'storacha' | 'cache' }[] = [];
 
       for (const addr of memberAddresses) {
@@ -587,35 +611,38 @@ async function main() {
 
   // --- View Endpoints ---
 
-  server.get('/proposals', async () => {
-    const count = await coop.getProposalCount();
+  server.get('/proposals', async (_req, reply) => {
+    if (!requireContract(reply)) return;
+    const count = await coop!.getProposalCount();
     const proposals = [];
     for (let i = 0; i < count; i++) {
-      proposals.push(await coop.getProposal(i));
+      proposals.push(await coop!.getProposal(i));
     }
     return { proposals, total: count };
   });
 
-  server.get<{ Params: { id: string } }>('/proposal/:id', async (req) => {
-    const proposal = await coop.getProposal(parseInt(req.params.id));
-    const access = await coop.hasAccess(parseInt(req.params.id), proposal.researcher);
+  server.get<{ Params: { id: string } }>('/proposal/:id', async (req, reply) => {
+    if (!requireContract(reply)) return;
+    const proposal = await coop!.getProposal(parseInt(req.params.id));
+    const access = await coop!.hasAccess(parseInt(req.params.id), proposal.researcher);
     return { proposal, hasAccess: access, receipts: store.getReceipts(parseInt(req.params.id)) };
   });
 
-  server.get('/members', async () => {
-    const addresses = await coop.getMemberList();
+  server.get('/members', async (_req, reply) => {
+    if (!requireContract(reply)) return;
+    const addresses = await coop!.getMemberList();
     const members = [];
     for (const addr of addresses) {
-      const m = await coop.getMember(addr);
+      const m = await coop!.getMember(addr);
       if (m) members.push(m);
     }
     return { members, total: members.length };
   });
 
-  server.get('/events', async () => ({
-    events: coop.events.slice(-50),
-    total: coop.events.length,
-  }));
+  server.get('/events', async (_req, reply) => {
+    if (!requireContract(reply)) return;
+    return { events: coop!.events.slice(-50), total: coop!.events.length };
+  });
 
   // Persistent records (survives restart)
   server.get('/records', async () => ({
@@ -655,7 +682,7 @@ async function main() {
         reply.code(400);
         return errorResponse('privateKey must be a 66-character hex string starting with 0x');
       }
-      const address = coop.registerWallet(privateKey as `0x${string}`);
+      const address = coop!.registerWallet(privateKey as `0x${string}`);
       store.saveWallet(address, privateKey);
       store.logAudit({ actor: address, action: 'WALLET_REGISTERED', target: address });
       return {
@@ -780,6 +807,7 @@ async function main() {
 
         // If proposalId provided, fetch from chain
         if (req.body.proposalId !== undefined) {
+          if (!coop) { reply.code(503); return errorResponse('Contract not deployed — cannot fetch proposal by ID. Pass { purpose, description, durationDays, categories } directly instead.'); }
           const proposal = await coop.getProposal(req.body.proposalId);
           purpose = proposal.purpose;
           description = proposal.description ?? purpose;
@@ -950,15 +978,15 @@ async function main() {
     }
 
     try {
-      const memberCount = await coop.getMemberCount().catch(() => 0);
-      const proposalCount = await coop.getProposalCount().catch(() => 0);
+      const memberCount = coop ? await coop.getMemberCount().catch(() => 0) : 0;
+      const proposalCount = coop ? await coop.getProposalCount().catch(() => 0) : 0;
 
       let approvedCount = 0;
       let rejectedCount = 0;
       let totalVotes = 0;
 
       for (let i = 0; i < proposalCount; i++) {
-        const p = await coop.getProposal(i).catch(() => null);
+        const p = coop ? await coop.getProposal(i).catch(() => null) : null;
         if (!p) continue;
         if (p.status === 2) approvedCount++;
         if (p.status === 1) rejectedCount++;
