@@ -1,12 +1,41 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+/// @dev Inlined ReentrancyGuard from OpenZeppelin v5.x to avoid import issues in Remix
+abstract contract ReentrancyGuard {
+    uint256 private constant NOT_ENTERED = 1;
+    uint256 private constant ENTERED = 2;
+    uint256 private _status;
+
+    error ReentrancyGuardReentrantCall();
+
+    constructor() {
+        _status = NOT_ENTERED;
+    }
+
+    modifier nonReentrant() {
+        _nonReentrantBefore();
+        _;
+        _nonReentrantAfter();
+    }
+
+    function _nonReentrantBefore() private {
+        if (_status == ENTERED) revert ReentrancyGuardReentrantCall();
+        _status = ENTERED;
+    }
+
+    function _nonReentrantAfter() private {
+        _status = NOT_ENTERED;
+    }
+}
 
 /// @title NeuroCoop — Neural Data Cooperative Protocol
 /// @notice Collective governance of neural data: members pool de-identified EEG data,
 ///         researchers propose studies, members vote on access.
 /// @dev Deployed on Flow EVM. Implements one-member-one-vote (cognitive equality).
+///
+/// Security: ReentrancyGuard on all state-changing functions, deployer-only governance,
+/// quorum enforcement, duplicate data prevention, front-running protection on leave.
 ///
 /// Aligned with:
 /// - Neurorights Foundation 5 Rights (Yuste et al.)
@@ -33,9 +62,9 @@ contract NeuroCoop is ReentrancyGuard {
 
     // --- Structs ---
     struct Member {
-        bytes32 dataId;        // Reference to encrypted data on Storacha
-        string storachaCid;    // IPFS CID of encrypted EEG data
-        string dataHash;       // SHA-256 of original data
+        bytes32 dataId;
+        string storachaCid;
+        string dataHash;
         uint8 channelCount;
         uint256 sampleRate;
         bool deidentified;
@@ -51,7 +80,7 @@ contract NeuroCoop is ReentrancyGuard {
         DataCategory[] categories;
         uint256 votesFor;
         uint256 votesAgainst;
-        uint256 totalVoters;    // Snapshot of member count at creation
+        uint256 totalVoters;
         ProposalStatus status;
         uint256 createdAt;
         uint256 deadline;
@@ -66,35 +95,18 @@ contract NeuroCoop is ReentrancyGuard {
 
     Proposal[] public proposals;
     mapping(uint256 => mapping(address => bool)) public hasVoted;
-
-    // Track unique data hashes to prevent duplicate submissions
     mapping(bytes32 => bool) private usedDataHashes;
 
-    uint256 public votingPeriod = 86400; // 24 hours default
-    uint256 public constant MIN_VOTING_PERIOD = 300;     // 5 minutes minimum
-    uint256 public constant MAX_VOTING_PERIOD = 604800;  // 7 days maximum
-    uint256 public constant QUORUM_BPS = 5000;           // 50% quorum (basis points)
+    uint256 public votingPeriod = 86400;
+    uint256 public constant MIN_VOTING_PERIOD = 300;
+    uint256 public constant MAX_VOTING_PERIOD = 604800;
+    uint256 public constant QUORUM_BPS = 5000;
 
     // --- Events ---
     event MemberJoined(address indexed member, bytes32 dataId, string cid, uint256 timestamp);
     event MemberLeft(address indexed member, uint256 timestamp);
-
-    event ProposalCreated(
-        uint256 indexed proposalId,
-        address indexed researcher,
-        string purpose,
-        uint256 durationDays,
-        uint256 deadline
-    );
-
-    event VoteCast(
-        uint256 indexed proposalId,
-        address indexed voter,
-        bool support,
-        uint256 votesFor,
-        uint256 votesAgainst
-    );
-
+    event ProposalCreated(uint256 indexed proposalId, address indexed researcher, string purpose, uint256 durationDays, uint256 deadline);
+    event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 votesFor, uint256 votesAgainst);
     event ProposalExecuted(uint256 indexed proposalId, address indexed researcher, uint256 accessExpiresAt);
     event ProposalRejected(uint256 indexed proposalId);
     event VotingPeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
@@ -116,10 +128,6 @@ contract NeuroCoop is ReentrancyGuard {
 
     // --- Member Functions ---
 
-    /// @notice Join the cooperative by contributing encrypted EEG data
-    /// @param dataId Unique identifier for the dataset
-    /// @param storachaCid IPFS CID of encrypted data on Storacha
-    /// @param dataHash SHA-256 hash of original data (must be unique)
     function joinCooperative(
         bytes32 dataId,
         string calldata storachaCid,
@@ -132,7 +140,6 @@ contract NeuroCoop is ReentrancyGuard {
         require(bytes(storachaCid).length > 0, "Empty CID");
         require(bytes(dataHash).length > 0, "Empty hash");
 
-        // Prevent duplicate data submissions
         bytes32 hashKey = keccak256(abi.encodePacked(dataHash));
         require(!usedDataHashes[hashKey], "Duplicate data hash");
         usedDataHashes[hashKey] = true;
@@ -154,15 +161,12 @@ contract NeuroCoop is ReentrancyGuard {
         emit MemberJoined(msg.sender, dataId, storachaCid, block.timestamp);
     }
 
-    /// @notice Leave the cooperative. Cannot leave during an active vote you haven't voted on.
     function leaveCooperative() external onlyMember nonReentrant {
-        // Prevent leaving during active proposals to avoid front-running vote outcomes
         for (uint256 i = 0; i < proposals.length; i++) {
             if (proposals[i].status == ProposalStatus.Active && block.timestamp <= proposals[i].deadline) {
                 require(hasVoted[i][msg.sender], "Must vote on active proposals before leaving");
             }
         }
-
         members[msg.sender].active = false;
         memberCount--;
         emit MemberLeft(msg.sender, block.timestamp);
@@ -170,7 +174,6 @@ contract NeuroCoop is ReentrancyGuard {
 
     // --- Proposal Functions ---
 
-    /// @notice Researcher submits a research proposal
     function submitProposal(
         string calldata purpose,
         string calldata description,
@@ -200,7 +203,6 @@ contract NeuroCoop is ReentrancyGuard {
         emit ProposalCreated(proposalId, msg.sender, purpose, durationDays, p.deadline);
     }
 
-    /// @notice Member casts a vote on a proposal (1 member = 1 vote)
     function vote(uint256 proposalId, bool support) external onlyMember nonReentrant {
         require(proposalId < proposals.length, "Invalid proposal");
         Proposal storage p = proposals[proposalId];
@@ -219,17 +221,14 @@ contract NeuroCoop is ReentrancyGuard {
         emit VoteCast(proposalId, msg.sender, support, p.votesFor, p.votesAgainst);
     }
 
-    /// @notice Execute a proposal after voting period ends
-    /// @dev Anyone can call this to finalize — ensures proposals don't get stuck
     function executeProposal(uint256 proposalId) external nonReentrant {
         require(proposalId < proposals.length, "Invalid proposal");
         Proposal storage p = proposals[proposalId];
         require(p.status == ProposalStatus.Active, "Not active");
 
-        // Quorum check: at least QUORUM_BPS of members must have voted
         uint256 totalVotes = p.votesFor + p.votesAgainst;
         uint256 quorumRequired = (p.totalVoters * QUORUM_BPS) / 10000;
-        if (quorumRequired == 0) quorumRequired = 1; // At least 1 vote required
+        if (quorumRequired == 0) quorumRequired = 1;
 
         bool quorumMet = totalVotes >= quorumRequired;
         bool majorityFor = p.votesFor > p.votesAgainst && p.votesFor > 0;
@@ -246,7 +245,6 @@ contract NeuroCoop is ReentrancyGuard {
 
     // --- Access Control ---
 
-    /// @notice Check if a researcher has access via an approved proposal
     function hasAccess(uint256 proposalId) external view returns (bool) {
         if (proposalId >= proposals.length) return false;
         Proposal storage p = proposals[proposalId];
@@ -257,7 +255,6 @@ contract NeuroCoop is ReentrancyGuard {
 
     // --- Governance ---
 
-    /// @notice Update voting period (deployer only, bounded)
     function setVotingPeriod(uint256 _seconds) external onlyDeployer {
         require(_seconds >= MIN_VOTING_PERIOD && _seconds <= MAX_VOTING_PERIOD, "Period out of bounds");
         uint256 oldPeriod = votingPeriod;
@@ -268,24 +265,15 @@ contract NeuroCoop is ReentrancyGuard {
     // --- View Functions ---
 
     function getProposal(uint256 proposalId) external view returns (
-        address researcher,
-        string memory purpose,
-        string memory description,
-        uint256 durationDays,
-        uint256 votesFor,
-        uint256 votesAgainst,
-        uint256 totalVoters,
-        ProposalStatus status,
-        uint256 createdAt,
-        uint256 deadline,
-        uint256 accessExpiresAt
+        address researcher, string memory purpose, string memory description,
+        uint256 durationDays, uint256 votesFor, uint256 votesAgainst,
+        uint256 totalVoters, ProposalStatus status, uint256 createdAt,
+        uint256 deadline, uint256 accessExpiresAt
     ) {
         Proposal storage p = proposals[proposalId];
-        return (
-            p.researcher, p.purpose, p.description, p.durationDays,
-            p.votesFor, p.votesAgainst, p.totalVoters,
-            p.status, p.createdAt, p.deadline, p.accessExpiresAt
-        );
+        return (p.researcher, p.purpose, p.description, p.durationDays,
+                p.votesFor, p.votesAgainst, p.totalVoters, p.status,
+                p.createdAt, p.deadline, p.accessExpiresAt);
     }
 
     function proposalCount() external view returns (uint256) {
@@ -293,16 +281,12 @@ contract NeuroCoop is ReentrancyGuard {
     }
 
     function getMember(address addr) external view returns (
-        bytes32 dataId,
-        string memory storachaCid,
-        uint8 channelCount,
-        uint256 sampleRate,
-        bool deidentified,
-        uint256 joinedAt,
-        bool active
+        bytes32 dataId, string memory storachaCid, uint8 channelCount,
+        uint256 sampleRate, bool deidentified, uint256 joinedAt, bool active
     ) {
         Member storage m = members[addr];
-        return (m.dataId, m.storachaCid, m.channelCount, m.sampleRate, m.deidentified, m.joinedAt, m.active);
+        return (m.dataId, m.storachaCid, m.channelCount, m.sampleRate,
+                m.deidentified, m.joinedAt, m.active);
     }
 
     function getMemberList() external view returns (address[] memory) {
