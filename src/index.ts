@@ -4,7 +4,8 @@ import { readFileSync } from 'fs';
 import { privateKeyToAccount } from 'viem/accounts';
 import { createConfig } from './config.js';
 import { CoopClient } from './coop.js';
-import { getPublicKey, encryptNeuroData, decryptNeuroData } from './crypto.js';
+import { getPublicKey, encryptNeuroData, decryptNeuroData, createAccessChallenge, verifyAccessSignature, signAccessChallenge } from './crypto.js';
+import { Store } from './db.js';
 import { initStoracha, uploadEncrypted, computeDataHash, getGatewayUrl } from './storacha.js';
 import { parseEegMetadata, deidentifyEeg, generateDataSummary } from './eeg.js';
 import { generateCoopReceipt } from './receipt.js';
@@ -56,13 +57,15 @@ async function main() {
     console.warn('[storacha] Continuing without Storacha');
   }
 
-  // --- State ---
-  const uploads = new Map<string, EncryptedUpload>();
-  const encryptionCache = new Map<string, string>();
-  const receipts = new Map<number, ConsentReceipt>();
-  const registeredWallets = new Map<string, string>(); // address -> privateKey
-  registeredWallets.set(ownerAddress.toLowerCase(), config.ownerPrivateKey);
-  const startTime = Date.now();
+  // --- Persistent Store (SQLite) ---
+  const store = new Store();
+  console.log('[db] SQLite persistence initialized (./data/neurocoop.db)');
+
+  // Register deployer wallet
+  store.saveWallet(ownerAddress, config.ownerPrivateKey);
+
+  // Track gas costs for metrics
+  const metrics = { totalGasUsed: 0n, txCount: 0, startTime: Date.now() };
 
   // --- Server ---
   const server = Fastify({ logger: true, bodyLimit: 2_097_152 });
@@ -79,12 +82,18 @@ async function main() {
       status: 'ok',
       project: 'NeuroCoop — Neural Data Cooperative Protocol',
       track: 'Neurotech: cognition × coordination × computation',
-      uptime: Math.floor((Date.now() - startTime) / 1000),
+      uptime: Math.floor((Date.now() - metrics.startTime) / 1000),
       contract: config.coopAddress,
       chain: 'Flow EVM Testnet (545)',
       encryption: 'ECIES (secp256k1 + AES-256-CBC)',
       storage: storachaClient ? 'Storacha (IPFS/Filecoin)' : 'local',
+      persistence: 'SQLite (./data/neurocoop.db)',
       cooperative: { members: mc, proposals: pc },
+      metrics: {
+        ...store.getMetrics(),
+        totalGasUsed: metrics.totalGasUsed.toString(),
+        totalTransactions: metrics.txCount,
+      },
       framework: {
         neurorights: 'Neurorights Foundation 5 Rights (Yuste et al.)',
         governance: 'One member, one vote (cognitive equality)',
@@ -125,7 +134,7 @@ async function main() {
       }
 
       const memberAddress = coop.registerWallet(privateKey as `0x${string}`);
-      registeredWallets.set(memberAddress.toLowerCase(), privateKey);
+      store.saveWallet(memberAddress, privateKey);
       const pubKey = getPublicKey(privateKey);
 
       // Load EEG data
@@ -172,12 +181,14 @@ async function main() {
         metadata.channelCount, metadata.sampleRate, shouldDeidentify
       );
 
-      uploads.set(dataId, {
+      const upload = {
         dataId, storachaCid, dataHash, txHash, owner: memberAddress, filename,
         channelCount: metadata.channelCount, sampleRate: metadata.sampleRate,
         deidentified: shouldDeidentify, timestamp,
-      });
-      encryptionCache.set(memberAddress.toLowerCase(), encrypted);
+      };
+      store.saveUpload(upload);
+      store.saveEncrypted(memberAddress, encrypted);
+      store.logAudit({ actor: memberAddress, action: 'JOIN_COOPERATIVE', target: dataId, txHash, details: `${metadata.channelCount}ch ${metadata.sampleRate}Hz` });
 
       const summary = generateDataSummary(rawData);
 
@@ -342,7 +353,8 @@ async function main() {
           }
         }
 
-        receipts.set(proposalId, receipt);
+        store.saveReceipt(proposalId, receipt);
+        store.logAudit({ actor: proposal.researcher, action: 'PROPOSAL_APPROVED', target: `proposal:${proposalId}`, txHash, details: `votes:${proposal.votesFor}-${proposal.votesAgainst}` });
       }
 
       return {
@@ -381,21 +393,36 @@ async function main() {
     },
   }, async (req, reply) => {
     try {
-      const { proposalId, researcherAddress } = req.body;
+      const { proposalId, researcherAddress, signature, message } = req.body as any;
       if (proposalId === undefined || !researcherAddress) {
         reply.code(400);
         return errorResponse('Required: proposalId, researcherAddress');
       }
 
-      // Verify the requester matches the proposal researcher
+      // Signature-based identity verification (lightweight SIWE-style)
+      // If signature + message provided, verify the requester actually controls the address
+      let verifiedAddress = researcherAddress;
+      if (signature && message) {
+        const { valid, recoveredAddress } = verifyAccessSignature(signature, message);
+        if (!valid || recoveredAddress.toLowerCase() !== researcherAddress.toLowerCase()) {
+          store.logAudit({ actor: researcherAddress, action: 'ACCESS_DENIED', target: `proposal:${proposalId}`, details: 'Invalid signature', success: false });
+          reply.code(403);
+          return errorResponse('Signature verification failed — cannot prove identity', { proposalId });
+        }
+        verifiedAddress = recoveredAddress;
+      }
+
+      // Verify the requester matches the proposal researcher (on-chain check)
       const proposal = await coop.getProposal(proposalId);
-      if (proposal.researcher.toLowerCase() !== researcherAddress.toLowerCase()) {
+      if (proposal.researcher.toLowerCase() !== verifiedAddress.toLowerCase()) {
+        store.logAudit({ actor: verifiedAddress, action: 'ACCESS_DENIED', target: `proposal:${proposalId}`, details: 'Address mismatch', success: false });
         reply.code(403);
         return errorResponse('Researcher address does not match proposal researcher', { proposalId });
       }
 
-      const hasAccess = await coop.hasAccess(proposalId, researcherAddress);
+      const hasAccess = await coop.hasAccess(proposalId, verifiedAddress);
       if (!hasAccess) {
+        store.logAudit({ actor: verifiedAddress, action: 'ACCESS_DENIED', target: `proposal:${proposalId}`, details: `status:${proposal.status}`, success: false });
         reply.code(403);
         return errorResponse(
           proposal.status === 1
@@ -407,20 +434,27 @@ async function main() {
         );
       }
 
-      // Collect all member data
+      // Collect all member data from persistent store
       const memberAddresses = await coop.getMemberList();
       const pooledData: { member: string; data: string }[] = [];
 
       for (const addr of memberAddresses) {
-        const encrypted = encryptionCache.get(addr.toLowerCase());
+        const encrypted = store.getEncrypted(addr);
         if (!encrypted) continue;
 
-        const memberKey = registeredWallets.get(addr.toLowerCase());
+        const memberKey = store.getWallet(addr);
         if (!memberKey) continue;
 
         const decrypted = await decryptNeuroData(memberKey, encrypted);
         pooledData.push({ member: addr.slice(0, 10) + '...', data: decrypted });
       }
+
+      store.logAudit({
+        actor: verifiedAddress,
+        action: 'DATA_ACCESSED',
+        target: `proposal:${proposalId}`,
+        details: `purpose:${proposal.purpose}, members:${pooledData.length}, verified:${!!signature}`,
+      });
 
       return {
         success: true,
@@ -429,7 +463,8 @@ async function main() {
         accessExpiresAt: new Date(proposal.accessExpiresAt * 1000).toISOString(),
         pooledData,
         totalMembers: pooledData.length,
-        message: `Access granted via cooperative vote (${proposal.votesFor}-${proposal.votesAgainst}). Data from ${pooledData.length} members.`,
+        identityVerified: !!signature,
+        message: `Access granted via cooperative vote (${proposal.votesFor}-${proposal.votesAgainst}). Data from ${pooledData.length} members.${signature ? ' Identity verified via signature.' : ''}`,
       };
     } catch (err) {
       reply.code(500);
@@ -451,7 +486,7 @@ async function main() {
   server.get<{ Params: { id: string } }>('/proposal/:id', async (req) => {
     const proposal = await coop.getProposal(parseInt(req.params.id));
     const access = await coop.hasAccess(parseInt(req.params.id), proposal.researcher);
-    return { proposal, hasAccess: access, receipt: receipts.get(parseInt(req.params.id)) || null };
+    return { proposal, hasAccess: access, receipts: store.getReceipts(parseInt(req.params.id)) };
   });
 
   server.get('/members', async () => {
@@ -469,12 +504,31 @@ async function main() {
     total: coop.events.length,
   }));
 
+  // Persistent records (survives restart)
+  server.get('/records', async () => ({
+    records: store.getAllUploads(),
+    total: store.getAllUploads().length,
+  }));
+
+  // Audit trail (persistent)
+  server.get('/audit', async () => ({
+    log: store.getAuditLog(100),
+    total: store.getAuditLog(100).length,
+  }));
+
+  // Signature challenge for /decrypt (SIWE-style)
+  server.get<{ Params: { proposalId: string } }>('/challenge/:proposalId', async (req) => {
+    const { message, timestamp } = createAccessChallenge(parseInt(req.params.proposalId));
+    return { message, timestamp, instructions: 'Sign this message with your private key and submit signature + message to POST /decrypt' };
+  });
+
   // --- Start ---
   await server.listen({ port: config.port, host: '0.0.0.0' });
   console.log(`\n[server] NeuroCoop running at http://localhost:${config.port}`);
 
   async function shutdown(signal: string) {
     console.log(`\n[server] ${signal}, shutting down...`);
+    store.close();
     await server.close();
     process.exit(0);
   }

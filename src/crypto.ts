@@ -101,3 +101,44 @@ export function verifyConsentAttestation(
   const recoveredAddress = EthCrypto.recover(signature, messageHash);
   return recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
 }
+
+/**
+ * Signature-based identity verification.
+ *
+ * Instead of trusting a claimed address, the requester signs a challenge message.
+ * We recover the signer's address from the signature — proving they control the key.
+ * This is a lightweight SIWE-style auth without full EIP-4361 (sufficient for prototype).
+ *
+ * Flow:
+ * 1. Server generates: "NeuroCoop|access|proposalId:{id}|timestamp:{ts}"
+ * 2. Requester signs with their private key
+ * 3. Server recovers address from signature
+ * 4. Server checks recovered address == proposal.researcher on-chain
+ */
+export function createAccessChallenge(proposalId: number): { message: string; timestamp: number } {
+  const timestamp = Math.floor(Date.now() / 1000);
+  const message = `NeuroCoop|access|proposalId:${proposalId}|timestamp:${timestamp}`;
+  return { message, timestamp };
+}
+
+export function verifyAccessSignature(
+  signature: string,
+  message: string
+): { valid: boolean; recoveredAddress: string } {
+  try {
+    const messageHash = EthCrypto.hash.keccak256(message);
+    const recoveredAddress = EthCrypto.recover(signature, messageHash);
+    return { valid: true, recoveredAddress };
+  } catch {
+    return { valid: false, recoveredAddress: '' };
+  }
+}
+
+/**
+ * Sign an access challenge (client-side helper for demo).
+ */
+export function signAccessChallenge(privateKey: string, message: string): string {
+  const cleanKey = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
+  const messageHash = EthCrypto.hash.keccak256(message);
+  return EthCrypto.sign(cleanKey, messageHash);
+}
