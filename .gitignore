@@ -5,3 +5,4 @@ deployments/
 .env
 .DS_Store
 *.log
+context.md
