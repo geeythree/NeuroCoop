@@ -28,11 +28,13 @@ export class CoopClient {
   private readonly walletClients: Map<string, any> = new Map();
   private readonly chain: Chain;
   private readonly coopAddress: `0x${string}`;
+  private readonly rpcUrl: string;
   public readonly events: CoopEvent[] = [];
 
   constructor(config: Config) {
     this.chain = flowTestnet;
     this.coopAddress = config.coopAddress;
+    this.rpcUrl = config.flowRpcUrl;
 
     this.publicClient = createPublicClient({
       chain: this.chain,
@@ -46,7 +48,7 @@ export class CoopClient {
     const client = createWalletClient({
       account,
       chain: this.chain,
-      transport: http('https://testnet.evm.nodes.onflow.org'),
+      transport: http(this.rpcUrl),
     });
     this.walletClients.set(account.address.toLowerCase(), client);
     return account.address;
