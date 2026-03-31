@@ -1,20 +1,15 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { readFileSync } from 'fs';
+import { privateKeyToAccount } from 'viem/accounts';
 import { createConfig } from './config.js';
-import { ConsentClient } from './consent.js';
-import {
-  getPublicKey,
-  encryptNeuroData,
-  decryptNeuroData,
-  signConsentAttestation,
-  verifyConsentAttestation,
-} from './crypto.js';
+import { CoopClient } from './coop.js';
+import { getPublicKey, encryptNeuroData, decryptNeuroData } from './crypto.js';
 import { initStoracha, uploadEncrypted, computeDataHash, getGatewayUrl } from './storacha.js';
 import { parseEegMetadata, deidentifyEeg, generateDataSummary } from './eeg.js';
-import { generateConsentReceipt } from './receipt.js';
+import { generateCoopReceipt } from './receipt.js';
 import { getDashboardHtml } from './dashboard.js';
-import { DataCategory } from './types.js';
+import { DataCategory, PROPOSAL_STATUS_LABELS } from './types.js';
 import type { EncryptedUpload, ConsentReceipt } from './types.js';
 
 async function main() {
@@ -24,502 +19,384 @@ async function main() {
     console.error('OWNER_PRIVATE_KEY is required');
     process.exit(1);
   }
-
-  if (!config.consentRegistryAddress) {
-    console.error('CONSENT_REGISTRY_ADDRESS is required — deploy the contract first');
+  if (!config.coopAddress) {
+    console.error('COOP_ADDRESS is required — deploy NeuroCoop.sol first');
     process.exit(1);
   }
 
-  // --- Initialize services ---
-  console.log('=== NeuroConsent ===');
-  console.log('Neural data wallet with granular consent and revocation controls');
-  console.log('Aligned with: Neurorights Foundation 5 Rights, UNESCO 2025, IEEE P7700');
+  // --- Initialize ---
+  console.log('=== NeuroCoop ===');
+  console.log('Neural Data Cooperative Protocol');
+  console.log('Collective governance of neural data at the intersection of');
+  console.log('cognition, coordination, and computation.');
   console.log('');
 
-  const consent = new ConsentClient(config);
+  const coop = new CoopClient(config);
+  const ownerAddress = coop.registerWallet(config.ownerPrivateKey);
   const ownerPublicKey = getPublicKey(config.ownerPrivateKey);
-  console.log(`[flow] Owner wallet: ${consent.ownerAddress}`);
-  console.log(`[flow] Contract: ${config.consentRegistryAddress}`);
-  console.log(`[flow] Chain: Flow EVM Testnet (${config.flowChainId})`);
 
-  const balance = await consent.getBalance();
+  console.log(`[flow] Deployer: ${ownerAddress}`);
+  console.log(`[flow] Contract: ${config.coopAddress}`);
+  console.log(`[flow] Chain: Flow EVM Testnet (${config.flowChainId})`);
+  console.log(`[crypto] ECIES (secp256k1 + AES-256-CBC)`);
+
+  const balance = await coop.getBalance(ownerAddress);
   console.log(`[flow] Balance: ${balance} FLOW`);
-  console.log(`[crypto] Encryption: ECIES (secp256k1 + AES-256-CBC)`);
 
   let storachaClient: Awaited<ReturnType<typeof initStoracha>> | null = null;
   try {
     storachaClient = await initStoracha(config.storachaEmail);
   } catch (err) {
-    console.error(`[storacha] Failed to initialize: ${err instanceof Error ? err.message : err}`);
-    console.warn('[storacha] Continuing without Storacha — uploads will be local only');
+    console.error(`[storacha] Init failed: ${err instanceof Error ? err.message : err}`);
+    console.warn('[storacha] Continuing without Storacha');
   }
 
-  // --- In-memory state ---
+  // --- State ---
   const uploads = new Map<string, EncryptedUpload>();
-  const encryptionCache = new Map<string, string>(); // dataId -> encrypted string
-  const receipts = new Map<string, ConsentReceipt[]>();
+  const encryptionCache = new Map<string, string>();
+  const receipts = new Map<number, ConsentReceipt>();
+  const registeredWallets = new Map<string, string>(); // address -> privateKey
+  registeredWallets.set(ownerAddress.toLowerCase(), config.ownerPrivateKey);
   const startTime = Date.now();
 
-  // --- Fastify Server ---
+  // --- Server ---
   const server = Fastify({ logger: false, bodyLimit: 2_097_152 });
   await server.register(cors, { origin: true });
 
-  // Dashboard
   server.get('/', async (_req, reply) => {
-    reply.type('text/html').send(getDashboardHtml(config.consentRegistryAddress, consent.ownerAddress));
+    reply.type('text/html').send(getDashboardHtml(config.coopAddress, ownerAddress));
   });
 
-  // Health
   server.get('/health', async () => {
-    const bal = await consent.getBalance().catch(() => 'unknown');
-    let stats = { records: 0, consents: 0, accesses: 0 };
-    try { stats = await consent.getStats(); } catch {}
+    const mc = await coop.getMemberCount().catch(() => 0);
+    const pc = await coop.getProposalCount().catch(() => 0);
     return {
       status: 'ok',
+      project: 'NeuroCoop — Neural Data Cooperative Protocol',
+      track: 'Neurotech: cognition × coordination × computation',
       uptime: Math.floor((Date.now() - startTime) / 1000),
+      contract: config.coopAddress,
+      chain: 'Flow EVM Testnet (545)',
+      encryption: 'ECIES (secp256k1 + AES-256-CBC)',
+      storage: storachaClient ? 'Storacha (IPFS/Filecoin)' : 'local',
+      cooperative: { members: mc, proposals: pc },
       framework: {
         neurorights: 'Neurorights Foundation 5 Rights (Yuste et al.)',
-        legislation: ['Chile Constitution Art. 19 No. 1 (2021)', 'Colorado HB 24-1058 (2024)', 'California SB 1223 (2024)'],
-        standards: ['UNESCO Recommendation on Neurotechnology Ethics (Nov 2025)', 'IEEE P7700 (in development)'],
+        governance: 'One member, one vote (cognitive equality)',
+        legislation: ['Chile 2021', 'Colorado HB 24-1058', 'California SB 1223'],
+        standards: ['UNESCO Nov 2025', 'IEEE P7700'],
       },
-      owner: consent.ownerAddress,
-      balance: `${bal} FLOW`,
-      contract: config.consentRegistryAddress,
-      chain: `Flow EVM Testnet (${config.flowChainId})`,
-      encryption: 'ECIES (secp256k1 + AES-256-CBC + HMAC-SHA-256)',
-      storachaConnected: !!storachaClient,
-      onChainStats: stats,
-      localUploads: uploads.size,
-      totalEvents: consent.events.length,
     };
   });
 
   /**
-   * Upload EEG data with de-identification and encryption.
-   *
-   * Pipeline: Raw EEG → De-identify (differential privacy) → Encrypt (ECIES)
-   *         → Store (Storacha/IPFS) → Register on-chain (Flow EVM)
-   *
-   * Aligns with Neurorights principle: Mental Privacy
-   * Aligns with Colorado HB 24-1058: "sensitive personal information" protection
+   * POST /join — Upload EEG data and join the cooperative.
+   * Pipeline: Raw EEG → De-identify → Encrypt → Store on Storacha → Join on Flow EVM
    */
   server.post<{
-    Body: {
-      data?: string;
-      filename?: string;
-      deidentify?: boolean;
-      stripLabels?: boolean;
-      noiseEpsilon?: number;
-    };
-  }>('/upload', async (req, reply) => {
+    Body: { privateKey: string; data?: string; filename?: string; deidentify?: boolean; noiseEpsilon?: number };
+  }>('/join', async (req, reply) => {
     try {
-      const body = req.body || {};
+      const { privateKey } = req.body;
+      if (!privateKey) { reply.code(400); return { error: 'Required: privateKey' }; }
+
+      const memberAddress = coop.registerWallet(privateKey as `0x${string}`);
+      registeredWallets.set(memberAddress.toLowerCase(), privateKey);
+      const pubKey = getPublicKey(privateKey);
+
+      // Load EEG data
       let rawData: string;
       let filename: string;
-
-      if (body.data) {
-        rawData = body.data;
-        filename = body.filename || 'upload.csv';
+      if (req.body.data) {
+        rawData = req.body.data;
+        filename = req.body.filename || 'upload.csv';
       } else {
-        const samplePath = new URL('../sample-data/sample-eeg.csv', import.meta.url);
-        rawData = readFileSync(samplePath, 'utf-8');
+        rawData = readFileSync(new URL('../sample-data/sample-eeg.csv', import.meta.url), 'utf-8');
         filename = 'sample-eeg.csv';
       }
 
-      // Parse EEG metadata
       const metadata = parseEegMetadata(rawData);
-      console.log(`[eeg] Parsed: ${metadata.channelCount} channels, ${metadata.sampleRate}Hz, ${metadata.sampleCount} samples`);
-
-      // De-identify (default: true — aligns with data minimization principle)
-      const shouldDeidentify = body.deidentify !== false;
+      const shouldDeidentify = req.body.deidentify !== false;
       let processedData = rawData;
-      let deidentificationLog: string[] = [];
+      let modifications: string[] = [];
 
       if (shouldDeidentify) {
-        const result = deidentifyEeg(rawData, {
-          stripLabels: body.stripLabels,
-          addNoise: true,
-          noiseEpsilon: body.noiseEpsilon || 1.0,
-        });
+        const result = deidentifyEeg(rawData, { addNoise: true, noiseEpsilon: req.body.noiseEpsilon || 1.0 });
         processedData = result.data;
-        deidentificationLog = result.modifications;
-        console.log(`[eeg] De-identified: ${deidentificationLog.join(', ')}`);
+        modifications = result.modifications;
       }
 
       const timestamp = Math.floor(Date.now() / 1000);
-      const dataId = consent.generateDataId(consent.ownerAddress, filename, timestamp);
+      const dataId = coop.generateDataId(memberAddress, filename, timestamp);
       const dataHash = computeDataHash(new TextEncoder().encode(processedData));
+      const { encrypted } = await encryptNeuroData(pubKey, processedData);
 
-      // Encrypt with owner's public key (ECIES)
-      const { encrypted } = await encryptNeuroData(ownerPublicKey, processedData);
-      console.log(`[crypto] Data encrypted (${encrypted.length} chars)`);
-
-      // Upload encrypted data to Storacha
       let storachaCid: string;
       if (storachaClient) {
         storachaCid = await uploadEncrypted(storachaClient, new TextEncoder().encode(encrypted), filename);
       } else {
         storachaCid = `local:${dataHash.substring(0, 16)}`;
-        console.warn('[upload] Storacha unavailable — using local reference');
       }
 
-      // Register on Flow EVM
-      const txHash = await consent.registerData(
-        dataId, storachaCid, '', dataHash,
+      const txHash = await coop.joinCooperative(
+        memberAddress, dataId, storachaCid, dataHash,
         metadata.channelCount, metadata.sampleRate, shouldDeidentify
       );
 
-      // Cache
-      const upload: EncryptedUpload = {
-        dataId, storachaCid, receiptCid: '', dataHash, txHash,
-        owner: consent.ownerAddress, filename,
+      uploads.set(dataId, {
+        dataId, storachaCid, dataHash, txHash, owner: memberAddress, filename,
         channelCount: metadata.channelCount, sampleRate: metadata.sampleRate,
         deidentified: shouldDeidentify, timestamp,
-      };
-      uploads.set(dataId, upload);
-      encryptionCache.set(dataId, encrypted);
+      });
+      encryptionCache.set(memberAddress.toLowerCase(), encrypted);
 
       const summary = generateDataSummary(rawData);
 
       return {
         success: true,
-        dataId,
-        storachaCid,
-        storachaUrl: storachaClient ? getGatewayUrl(storachaCid) : null,
-        dataHash,
-        txHash,
+        member: memberAddress,
+        dataId, storachaCid, dataHash, txHash,
         explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
-        metadata: {
-          channels: metadata.channels,
-          channelCount: metadata.channelCount,
-          sampleRate: metadata.sampleRate,
-          duration: `${metadata.duration.toFixed(1)}s`,
-          sampleCount: metadata.sampleCount,
-        },
-        deidentification: shouldDeidentify ? {
-          applied: true,
-          modifications: deidentificationLog,
-          privacyBudget: `ε=${body.noiseEpsilon || 1.0} (Laplace mechanism)`,
-        } : { applied: false },
+        metadata: { channels: metadata.channels, channelCount: metadata.channelCount, sampleRate: metadata.sampleRate },
+        deidentification: shouldDeidentify ? { modifications, epsilon: req.body.noiseEpsilon || 1.0 } : null,
         summary,
-        encryption: 'ECIES (secp256k1 + AES-256-CBC)',
-        timestamp,
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error(`[upload] Error: ${msg}`);
       reply.code(500);
-      return { success: false, error: msg };
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
   /**
-   * Grant purpose-limited, time-expiring consent with data category granularity.
-   *
-   * Maps to BCI data pipeline stages (IEEE/neuroscience convention):
-   *   0 = RAW_EEG (direct sensor acquisition)
-   *   1 = PROCESSED_FEATURES (band power, ERPs)
-   *   2 = INFERENCES (ML model outputs)
-   *   3 = METADATA (device info, session context)
-   *
-   * Note: California SB 1223 explicitly excludes inferred data (category 2)
-   * from neural data protections. Our system lets users consent to inferences
-   * separately, giving them more control than the law requires.
-   *
-   * Aligns with Neurorights: Free Will (consent is revocable),
-   * Mental Privacy (purpose limitation), Fair Access (transparent terms)
+   * POST /proposal — Researcher submits a research proposal.
    */
   server.post<{
-    Body: {
-      dataId: string;
-      researcher: string;
-      purpose: string;
-      purposeDescription?: string;
-      expiresAt?: number;
-      expiresInDays?: number;
-      categories?: number[];
-    };
-  }>('/consent/grant', async (req, reply) => {
+    Body: { privateKey: string; purpose: string; description: string; durationDays: number; categories?: number[] };
+  }>('/proposal', async (req, reply) => {
     try {
-      const { dataId, researcher, purpose } = req.body;
-      if (!dataId || !researcher || !purpose) {
+      const { privateKey, purpose, description, durationDays } = req.body;
+      if (!privateKey || !purpose || !description || !durationDays) {
         reply.code(400);
-        return { error: 'Required: dataId, researcher, purpose' };
+        return { error: 'Required: privateKey, purpose, description, durationDays' };
       }
 
+      const researcherAddress = coop.registerWallet(privateKey as `0x${string}`);
       const categories = req.body.categories?.length
         ? req.body.categories
         : [DataCategory.PROCESSED_FEATURES, DataCategory.INFERENCES];
 
-      let expiresAt = req.body.expiresAt || 0;
-      if (!expiresAt && req.body.expiresInDays) {
-        expiresAt = Math.floor(Date.now() / 1000) + (req.body.expiresInDays * 86400);
-      }
-
-      // Sign consent attestation (off-chain proof)
-      const attestation = await signConsentAttestation(config.ownerPrivateKey, {
-        action: 'grant',
-        dataId,
-        researcher,
-        purpose,
-        timestamp: Math.floor(Date.now() / 1000),
-      });
-
-      // Write consent to Flow EVM
-      const txHash = await consent.grantConsent(
-        dataId as `0x${string}`,
-        researcher as `0x${string}`,
-        purpose,
-        expiresAt,
-        categories
+      const { txHash, proposalId } = await coop.submitProposal(
+        researcherAddress, purpose, description, durationDays, categories
       );
-
-      // Generate W3C consent receipt (ISO/IEC TS 27560:2023)
-      const upload = uploads.get(dataId);
-      const receipt = generateConsentReceipt({
-        dataId,
-        dataOwner: consent.ownerAddress,
-        researcher,
-        purpose,
-        purposeDescription: req.body.purposeDescription || purpose,
-        categories,
-        expiresAt,
-        deidentified: upload?.deidentified ?? false,
-        txHash,
-        storachaCid: upload?.storachaCid || '',
-        contractAddress: config.consentRegistryAddress,
-      });
-
-      // Store receipt on Storacha
-      let receiptCid = '';
-      if (storachaClient) {
-        const receiptBytes = new TextEncoder().encode(JSON.stringify(receipt, null, 2));
-        receiptCid = await uploadEncrypted(storachaClient, receiptBytes, `receipt-${receipt.receiptId}.json`);
-        receipt.proofs.storachaCid = receiptCid;
-      }
-
-      if (!receipts.has(dataId)) receipts.set(dataId, []);
-      receipts.get(dataId)!.push(receipt);
 
       return {
         success: true,
+        proposalId,
+        researcher: researcherAddress,
+        purpose, description, durationDays,
+        categories: categories.map(c => ({ id: c, label: ['Raw EEG', 'Processed Features', 'ML Inferences', 'Metadata'][c] })),
         txHash,
         explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
-        consent: {
-          purpose,
-          categories: categories.map(c => ({
-            id: c,
-            label: ['Raw EEG', 'Processed Features', 'ML Inferences', 'Session Metadata'][c],
-            pipelineStage: ['Sensor Acquisition', 'Signal Processing', 'Model Output', 'Context'][c],
-          })),
-          expiresAt: expiresAt > 0 ? new Date(expiresAt * 1000).toISOString() : 'never',
-        },
-        attestation,
+        message: 'Proposal submitted. Cooperative members can now vote.',
+      };
+    } catch (err) {
+      reply.code(500);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  /**
+   * POST /vote — Member votes on a proposal. One member = one vote.
+   */
+  server.post<{
+    Body: { privateKey: string; proposalId: number; support: boolean };
+  }>('/vote', async (req, reply) => {
+    try {
+      const { privateKey, proposalId, support } = req.body;
+      if (!privateKey || proposalId === undefined || support === undefined) {
+        reply.code(400);
+        return { error: 'Required: privateKey, proposalId, support (boolean)' };
+      }
+
+      const voterAddress = coop.registerWallet(privateKey as `0x${string}`);
+      const txHash = await coop.vote(voterAddress, proposalId, support);
+
+      const proposal = await coop.getProposal(proposalId);
+
+      return {
+        success: true,
+        voter: voterAddress,
+        proposalId,
+        support,
+        currentTally: { for: proposal.votesFor, against: proposal.votesAgainst },
+        txHash,
+        explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
+      };
+    } catch (err) {
+      reply.code(500);
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  /**
+   * POST /execute — Execute a proposal after voting. Grants or denies access.
+   */
+  server.post<{
+    Body: { privateKey: string; proposalId: number };
+  }>('/execute', async (req, reply) => {
+    try {
+      const { privateKey, proposalId } = req.body;
+      if (!privateKey || proposalId === undefined) {
+        reply.code(400);
+        return { error: 'Required: privateKey, proposalId' };
+      }
+
+      const callerAddress = coop.registerWallet(privateKey as `0x${string}`);
+      const txHash = await coop.executeProposal(callerAddress, proposalId);
+      const proposal = await coop.getProposal(proposalId);
+
+      const approved = proposal.status === 3; // Executed
+      let receipt: ConsentReceipt | null = null;
+
+      if (approved) {
+        receipt = generateCoopReceipt({
+          proposal,
+          executionTxHash: txHash,
+          storachaCid: '',
+          contractAddress: config.coopAddress,
+        });
+
+        if (storachaClient) {
+          const receiptBytes = new TextEncoder().encode(JSON.stringify(receipt, null, 2));
+          const receiptCid = await uploadEncrypted(storachaClient, receiptBytes, `receipt-proposal-${proposalId}.json`);
+          receipt.proofs.storachaCid = receiptCid;
+        }
+
+        receipts.set(proposalId, receipt);
+      }
+
+      return {
+        success: true,
+        proposalId,
+        outcome: approved ? 'APPROVED — access granted' : 'REJECTED — access denied',
+        votes: { for: proposal.votesFor, against: proposal.votesAgainst, total: proposal.totalVoters },
+        accessExpiresAt: approved && proposal.accessExpiresAt > 0
+          ? new Date(proposal.accessExpiresAt * 1000).toISOString()
+          : null,
+        txHash,
+        explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
         receipt,
-        receiptCid: receiptCid || null,
-        receiptUrl: receiptCid ? getGatewayUrl(receiptCid) : null,
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
       reply.code(500);
-      return { success: false, error: msg };
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
   /**
-   * Revoke consent with reason.
-   *
-   * Aligns with Neurorights: Free Will — revocation is immediate and on-chain.
-   * Once revoked, the server will refuse to decrypt data for the researcher.
-   * The encrypted data remains on Storacha but is inaccessible.
-   *
-   * Chilean Supreme Court precedent (2021): ordered Emotiv to delete neural data
-   * after user revoked consent. Our system enforces this cryptographically.
+   * POST /decrypt — Researcher accesses pooled data if proposal was approved.
    */
-  server.post<{ Body: { dataId: string; researcher: string; reason?: string } }>('/consent/revoke', async (req, reply) => {
+  server.post<{
+    Body: { proposalId: number };
+  }>('/decrypt', async (req, reply) => {
     try {
-      const { dataId, researcher, reason } = req.body;
-      if (!dataId || !researcher) {
+      const { proposalId } = req.body;
+      if (proposalId === undefined) {
         reply.code(400);
-        return { error: 'Required: dataId, researcher' };
+        return { success: false, error: 'Required: proposalId' };
       }
 
-      const attestation = await signConsentAttestation(config.ownerPrivateKey, {
-        action: 'revoke',
-        dataId,
-        researcher,
-        purpose: reason || 'withdrawn',
-        timestamp: Math.floor(Date.now() / 1000),
-      });
-
-      const txHash = await consent.revokeConsent(
-        dataId as `0x${string}`,
-        researcher as `0x${string}`,
-        reason || 'Consent withdrawn by data owner'
-      );
-
-      return {
-        success: true,
-        txHash,
-        explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
-        message: `Consent revoked. Reason: ${reason || 'Consent withdrawn by data owner'}`,
-        attestation,
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      reply.code(500);
-      return { success: false, error: msg };
-    }
-  });
-
-  // Check consent status
-  server.get<{ Params: { dataId: string } }>('/consent/:dataId', async (req, reply) => {
-    try {
-      const { dataId } = req.params;
-      const record = await consent.getRecord(dataId as `0x${string}`);
-      if (!record) {
-        reply.code(404);
-        return { error: 'Data record not found' };
-      }
-
-      const researchers = await consent.getGrantedResearchers(dataId as `0x${string}`);
-      const consentDetails: Record<string, any> = {};
-
-      for (const r of researchers) {
-        const grant = await consent.getConsent(dataId as `0x${string}`, r as `0x${string}`);
-        const hasAccess = await consent.hasConsent(dataId as `0x${string}`, r as `0x${string}`);
-        consentDetails[r] = { ...grant, currentlyValid: hasAccess };
-      }
-
-      return { record, researchers, consentDetails, receipts: receipts.get(dataId) || [] };
-    } catch (err) {
-      reply.code(500);
-      return { error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
-  /**
-   * Decrypt neural data for an authorized researcher.
-   *
-   * Flow:
-   * 1. Verify on-chain consent status (Flow EVM)
-   * 2. Check purpose and expiration
-   * 3. Decrypt with owner's private key (ECIES)
-   * 4. Return plaintext to authorized researcher
-   *
-   * Production architecture would use proxy re-encryption (Umbral/NuCypher)
-   * to eliminate server-side key custody. This prototype demonstrates the
-   * consent-gated access pattern with on-chain verification.
-   */
-  server.post<{ Body: { dataId: string; researcherAddress: string } }>('/decrypt', async (req, reply) => {
-    try {
-      const { dataId, researcherAddress } = req.body;
-      if (!dataId || !researcherAddress) {
-        reply.code(400);
-        return { success: false, error: 'Required: dataId, researcherAddress' };
-      }
-
-      // Step 1: Verify on-chain consent
-      const hasAccess = await consent.hasConsent(
-        dataId as `0x${string}`,
-        researcherAddress as `0x${string}`
-      );
-
+      const hasAccess = await coop.hasAccess(proposalId);
       if (!hasAccess) {
-        const consentInfo = await consent.getConsent(
-          dataId as `0x${string}`,
-          researcherAddress as `0x${string}`
-        );
+        const proposal = await coop.getProposal(proposalId);
         reply.code(403);
         return {
           success: false,
-          error: consentInfo?.expired
-            ? 'Consent has expired. Request renewal from the data owner.'
-            : 'Consent not granted. The data owner has not authorized your address.',
-          researcher: researcherAddress,
-          dataId,
-          neurorightViolation: 'Access denied — Mental Privacy (Neurorights Foundation Principle #1)',
+          error: proposal.status === 2
+            ? 'Proposal was REJECTED by the cooperative. Access denied.'
+            : proposal.accessExpiresAt > 0 && Date.now() / 1000 > proposal.accessExpiresAt
+              ? 'Access has EXPIRED.'
+              : 'Proposal has not been approved yet.',
+          proposalId,
+          status: PROPOSAL_STATUS_LABELS[proposal.status],
         };
       }
 
-      // Step 2: Get consent details for audit
-      const consentInfo = await consent.getConsent(
-        dataId as `0x${string}`,
-        researcherAddress as `0x${string}`
-      );
+      // Collect all member data
+      const memberAddresses = await coop.getMemberList();
+      const pooledData: { member: string; data: string }[] = [];
 
-      // Step 3: Decrypt
-      const encrypted = encryptionCache.get(dataId);
-      if (!encrypted) {
-        reply.code(404);
-        return { success: false, error: 'Encrypted data not found in cache' };
+      for (const addr of memberAddresses) {
+        const encrypted = encryptionCache.get(addr.toLowerCase());
+        if (!encrypted) continue;
+
+        const memberKey = registeredWallets.get(addr.toLowerCase());
+        if (!memberKey) continue;
+
+        const decrypted = await decryptNeuroData(memberKey, encrypted);
+        pooledData.push({ member: addr.slice(0, 10) + '...', data: decrypted });
       }
 
-      const decrypted = await decryptNeuroData(config.ownerPrivateKey, encrypted);
+      const proposal = await coop.getProposal(proposalId);
 
       return {
         success: true,
-        data: decrypted,
-        dataId,
-        researcher: researcherAddress,
-        consentDetails: {
-          purpose: consentInfo?.purpose,
-          expiresAt: consentInfo?.expiresAt ? new Date(consentInfo.expiresAt * 1000).toISOString() : 'never',
-        },
-        verification: 'Consent verified on Flow EVM before decryption',
+        proposalId,
+        purpose: proposal.purpose,
+        accessExpiresAt: new Date(proposal.accessExpiresAt * 1000).toISOString(),
+        pooledData,
+        totalMembers: pooledData.length,
+        message: `Access granted via cooperative vote (${proposal.votesFor}-${proposal.votesAgainst}). Data from ${pooledData.length} members.`,
       };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
       reply.code(500);
-      return { success: false, error: msg };
+      return { success: false, error: err instanceof Error ? err.message : String(err) };
     }
   });
 
-  // Verify a consent attestation signature
-  server.post<{ Body: { signature: string; message: string; expectedAddress: string } }>('/verify', async (req, reply) => {
-    try {
-      const { signature, message, expectedAddress } = req.body;
-      const valid = verifyConsentAttestation(signature, message, expectedAddress);
-      return { valid, recoveredFrom: valid ? expectedAddress : 'mismatch' };
-    } catch (err) {
-      reply.code(400);
-      return { error: err instanceof Error ? err.message : String(err) };
+  // --- View Endpoints ---
+
+  server.get('/proposals', async () => {
+    const count = await coop.getProposalCount();
+    const proposals = [];
+    for (let i = 0; i < count; i++) {
+      proposals.push(await coop.getProposal(i));
     }
+    return { proposals, total: count };
   });
 
-  // List all uploads
-  server.get('/records', async () => ({
-    records: Array.from(uploads.values()),
-    total: uploads.size,
-  }));
+  server.get<{ Params: { id: string } }>('/proposal/:id', async (req) => {
+    const proposal = await coop.getProposal(parseInt(req.params.id));
+    const hasAccess = await coop.hasAccess(parseInt(req.params.id));
+    return { proposal, hasAccess, receipt: receipts.get(parseInt(req.params.id)) || null };
+  });
 
-  // Consent event log
+  server.get('/members', async () => {
+    const addresses = await coop.getMemberList();
+    const members = [];
+    for (const addr of addresses) {
+      const m = await coop.getMember(addr);
+      if (m) members.push(m);
+    }
+    return { members, total: members.length };
+  });
+
   server.get('/events', async () => ({
-    events: consent.events.slice(-50),
-    total: consent.events.length,
+    events: coop.events.slice(-50),
+    total: coop.events.length,
   }));
 
-  // Get consent receipts
-  server.get<{ Params: { dataId: string } }>('/receipts/:dataId', async (req) => ({
-    receipts: receipts.get(req.params.dataId) || [],
-  }));
-
-  // Start
+  // --- Start ---
   await server.listen({ port: config.port, host: '0.0.0.0' });
-  console.log(`\n[server] NeuroConsent running at http://localhost:${config.port}`);
-  console.log(`[server] Dashboard: http://localhost:${config.port}/`);
+  console.log(`\n[server] NeuroCoop running at http://localhost:${config.port}`);
 
   async function shutdown(signal: string) {
-    console.log(`\n[server] ${signal} received, shutting down...`);
+    console.log(`\n[server] ${signal}, shutting down...`);
     await server.close();
     process.exit(0);
   }
-
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
-main().catch((err) => {
-  console.error('Fatal:', err);
-  process.exit(1);
-});
+main().catch(err => { console.error('Fatal:', err); process.exit(1); });

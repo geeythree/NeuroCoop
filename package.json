@@ -1,7 +1,7 @@
 {
-  "name": "neuroconsent",
+  "name": "neurocoop",
   "version": "1.0.0",
-  "description": "Privacy-preserving consent framework for neural data on the blockchain",
+  "description": "Neural Data Cooperative Protocol — collective governance of neural data on Flow EVM",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

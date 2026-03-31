@@ -12,72 +12,59 @@ export const DATA_CATEGORY_LABELS: Record<DataCategory, string> = {
   [DataCategory.METADATA]: 'Session Metadata',
 };
 
-export interface DataRecord {
+export const BCI_PIPELINE_STAGES: Record<DataCategory, string> = {
+  [DataCategory.RAW_EEG]: 'Sensor Acquisition',
+  [DataCategory.PROCESSED_FEATURES]: 'Signal Processing',
+  [DataCategory.INFERENCES]: 'Model Output',
+  [DataCategory.METADATA]: 'Context',
+};
+
+export enum ProposalStatus {
+  Active = 0,
+  Approved = 1,
+  Rejected = 2,
+  Executed = 3,
+  Expired = 4,
+}
+
+export const PROPOSAL_STATUS_LABELS: Record<ProposalStatus, string> = {
+  [ProposalStatus.Active]: 'Voting Open',
+  [ProposalStatus.Approved]: 'Approved',
+  [ProposalStatus.Rejected]: 'Rejected',
+  [ProposalStatus.Executed]: 'Access Granted',
+  [ProposalStatus.Expired]: 'Expired',
+};
+
+export interface CoopMember {
+  address: string;
   dataId: string;
-  owner: string;
   storachaCid: string;
-  receiptCid: string;
-  dataHash: string;
   channelCount: number;
   sampleRate: number;
-  uploadedAt: number;
   deidentified: boolean;
-}
-
-export interface ConsentGrant {
-  purpose: string;
-  grantedAt: number;
-  expiresAt: number;
-  categories: DataCategory[];
+  joinedAt: number;
   active: boolean;
-  expired: boolean;
 }
 
-export interface ConsentReceipt {
-  receiptId: string;
-  issuedAt: string;
-  dataId: string;
-  dataOwner: string;
-  status: 'active' | 'revoked' | 'expired';
-  purpose: {
-    purposeId: string;
-    description: string;
-    consentGiven: boolean;
-    validUntil: string | null;
-  }[];
-  dataCategories: {
-    category: string;
-    description: string;
-    included: boolean;
-    deidentified: boolean;
-  }[];
-  recipient: {
-    address: string;
-    accessExpires: string | null;
-  };
-  rights: {
-    access: boolean;
-    export: boolean;
-    deletion: boolean;
-    withdrawConsent: boolean;
-  };
-  proofs: {
-    consentTxHash: string;
-    storachaCid: string;
-    flowExplorerUrl: string;
-  };
-  schema: 'ISO/IEC TS 27560:2023 (simplified)';
+export interface Proposal {
+  id: number;
+  researcher: string;
+  purpose: string;
+  description: string;
+  durationDays: number;
+  categories: DataCategory[];
+  votesFor: number;
+  votesAgainst: number;
+  totalVoters: number;
+  status: ProposalStatus;
+  createdAt: number;
+  deadline: number;
+  accessExpiresAt: number;
 }
 
-export interface ConsentEvent {
-  type: 'DataRegistered' | 'ConsentGranted' | 'ConsentRevoked' | 'DataAccessed';
-  dataId: string;
-  owner?: string;
-  researcher?: string;
-  purpose?: string;
-  expiresAt?: number;
-  reason?: string;
-  cid?: string;
+export interface CoopEvent {
+  type: 'MemberJoined' | 'MemberLeft' | 'ProposalCreated' | 'VoteCast' | 'ProposalExecuted' | 'ProposalRejected';
+  data: Record<string, any>;
   timestamp: number;
   txHash: string;
   blockNumber: number;
@@ -86,7 +73,6 @@ export interface ConsentEvent {
 export interface EncryptedUpload {
   dataId: string;
   storachaCid: string;
-  receiptCid: string;
   dataHash: string;
   txHash: string;
   owner: string;
@@ -95,6 +81,45 @@ export interface EncryptedUpload {
   sampleRate: number;
   deidentified: boolean;
   timestamp: number;
+}
+
+export interface ConsentReceipt {
+  receiptId: string;
+  issuedAt: string;
+  proposalId: number;
+  cooperativeContract: string;
+  status: 'approved' | 'rejected' | 'expired';
+  purpose: {
+    purposeId: string;
+    description: string;
+    validUntil: string | null;
+  };
+  dataCategories: {
+    category: string;
+    description: string;
+    included: boolean;
+  }[];
+  researcher: {
+    address: string;
+    accessExpires: string | null;
+  };
+  governance: {
+    votesFor: number;
+    votesAgainst: number;
+    totalMembers: number;
+    mechanism: 'one-member-one-vote (cognitive equality)';
+  };
+  proofs: {
+    executionTxHash: string;
+    storachaCid: string;
+    flowExplorerUrl: string;
+  };
+  framework: {
+    neurorights: string[];
+    legislation: string[];
+    standards: string[];
+  };
+  schema: 'ISO/IEC TS 27560:2023 (cooperative extension)';
 }
 
 export interface EegMetadata {
