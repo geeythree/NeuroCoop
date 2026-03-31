@@ -133,7 +133,12 @@ async function main() {
 
       let storachaCid: string;
       if (storachaClient) {
-        storachaCid = await uploadEncrypted(storachaClient, new TextEncoder().encode(encrypted), filename);
+        try {
+          storachaCid = await uploadEncrypted(storachaClient, new TextEncoder().encode(encrypted), filename);
+        } catch (stErr) {
+          console.warn(`[storacha] Upload failed, using local fallback: ${stErr instanceof Error ? stErr.message : stErr}`);
+          storachaCid = `local:${dataHash.substring(0, 16)}`;
+        }
       } else {
         storachaCid = `local:${dataHash.substring(0, 16)}`;
       }
@@ -267,9 +272,13 @@ async function main() {
         });
 
         if (storachaClient) {
-          const receiptBytes = new TextEncoder().encode(JSON.stringify(receipt, null, 2));
-          const receiptCid = await uploadEncrypted(storachaClient, receiptBytes, `receipt-proposal-${proposalId}.json`);
-          receipt.proofs.storachaCid = receiptCid;
+          try {
+            const receiptBytes = new TextEncoder().encode(JSON.stringify(receipt, null, 2));
+            const receiptCid = await uploadEncrypted(storachaClient, receiptBytes, `receipt-proposal-${proposalId}.json`);
+            receipt.proofs.storachaCid = receiptCid;
+          } catch (stErr) {
+            console.warn(`[storacha] Receipt upload failed: ${stErr instanceof Error ? stErr.message : stErr}`);
+          }
         }
 
         receipts.set(proposalId, receipt);
