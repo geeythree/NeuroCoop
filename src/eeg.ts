@@ -1,3 +1,15 @@
+/**
+ * EEG data parsing, de-identification, and summary generation.
+ *
+ * Privacy model: This module applies statistical noise injection (Laplace mechanism)
+ * to EEG channel values. This is NOT formal differential privacy (DP). True DP would
+ * require: (1) sensitivity calibration per query, (2) privacy budget accounting
+ * (epsilon tracking across all queries), (3) composition theorem analysis, and
+ * (4) formal proofs of privacy guarantees. See SECURITY.md for full details.
+ *
+ * This prototype technique makes exact value recovery harder but provides no
+ * mathematically proven privacy bound.
+ */
 import type { EegMetadata } from './types.js';
 
 /**

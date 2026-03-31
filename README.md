@@ -45,7 +45,7 @@ graph TB
     end
 
     subgraph "Privacy Pipeline"
-        D[De-identify<br/>Differential Privacy ε=1.0]
+        D[De-identify<br/>Laplace Noise ε=1.0]
         E[Encrypt<br/>ECIES secp256k1]
     end
 
@@ -131,7 +131,7 @@ sequenceDiagram
 BCI users upload their EEG data. Before storage, the data passes through a privacy pipeline:
 
 - **De-identification**: PII columns stripped, timestamps converted to relative offsets
-- **Differential privacy**: Laplace noise added (configurable ε parameter) to prevent re-identification
+- **Statistical noise injection**: Laplace noise added (configurable ε parameter) to hinder re-identification. Note: this is not formal differential privacy — see [SECURITY.md](SECURITY.md) for details on what would be needed
 - **Encryption**: ECIES (secp256k1 + AES-256-CBC) — only the owner's private key can decrypt
 - **Decentralized storage**: Encrypted data uploaded to Storacha (IPFS/Filecoin)
 - **On-chain registration**: Data hash, CID, and EEG metadata registered on Flow EVM
@@ -195,7 +195,7 @@ NeuroCoop is grounded in existing legislation and international standards:
 
 | Neurorights Principle | NeuroCoop Implementation |
 |----------------------|--------------------------|
-| **Mental Privacy** | Data encrypted per-member; de-identified before pooling; differential privacy |
+| **Mental Privacy** | Data encrypted per-member; de-identified before pooling; Laplace noise injection |
 | **Free Will** | Consent is collective and revocable; no coercive individual pressure |
 | **Fair Access** | One member, one vote — cognitive equality; researchers compete on merit |
 | **Personal Identity** | Data categories separate raw signals from inferences; users choose what to share |
@@ -212,7 +212,7 @@ NeuroCoop is grounded in existing legislation and international standards:
 | Storage | **Storacha** (IPFS/Filecoin) | Decentralized encrypted data + consent receipts |
 | Server | Fastify + TypeScript | API + dashboard |
 | Blockchain Client | viem | Flow EVM interaction |
-| Privacy | Custom differential privacy (Laplace mechanism) | EEG de-identification |
+| Privacy | Laplace noise injection (statistical, not formal DP) | EEG de-identification |
 
 ---
 
@@ -266,7 +266,7 @@ neurocoop/
 │   ├── index.ts           # Fastify server + API endpoints
 │   ├── coop.ts            # Flow EVM client for cooperative operations
 │   ├── crypto.ts          # ECIES encryption (verified end-to-end)
-│   ├── eeg.ts             # EEG parsing + differential privacy de-identification
+│   ├── eeg.ts             # EEG parsing + noise-based de-identification
 │   ├── storacha.ts        # Decentralized storage (Storacha/IPFS)
 │   ├── receipt.ts         # W3C consent receipts (ISO/IEC TS 27560:2023)
 │   ├── dashboard.ts       # Interactive cooperative dashboard
@@ -276,12 +276,14 @@ neurocoop/
 │   └── sample-eeg.csv     # 6-channel EEG sample (250Hz, 4 neural states)
 ├── package.json
 ├── tsconfig.json
+├── vitest.config.ts
+├── SECURITY.md           # Honest security & limitations documentation
 └── README.md
 ```
 
 ## Production Considerations
 
-This is a hackathon prototype. Production deployment would require:
+This is a hackathon prototype. See [SECURITY.md](SECURITY.md) for a detailed analysis of all known limitations. Production deployment would require:
 
 - **Threshold encryption** (e.g., Shamir's Secret Sharing or proxy re-encryption via Umbral) to eliminate server-side key custody
 - **Persistent storage** (SQLite or PostgreSQL) for encrypted data cache
