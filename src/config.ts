@@ -33,7 +33,11 @@ export const CONSENT_REGISTRY_ABI = [
     inputs: [
       { name: 'dataId', type: 'bytes32' },
       { name: 'storachaCid', type: 'string' },
+      { name: 'receiptCid', type: 'string' },
       { name: 'dataHash', type: 'string' },
+      { name: 'channelCount', type: 'uint8' },
+      { name: 'sampleRate', type: 'uint256' },
+      { name: 'deidentified', type: 'bool' },
     ],
     outputs: [],
   },
@@ -44,6 +48,9 @@ export const CONSENT_REGISTRY_ABI = [
     inputs: [
       { name: 'dataId', type: 'bytes32' },
       { name: 'researcher', type: 'address' },
+      { name: 'purpose', type: 'string' },
+      { name: 'expiresAt', type: 'uint256' },
+      { name: 'categories', type: 'uint8[]' },
     ],
     outputs: [],
   },
@@ -54,6 +61,7 @@ export const CONSENT_REGISTRY_ABI = [
     inputs: [
       { name: 'dataId', type: 'bytes32' },
       { name: 'researcher', type: 'address' },
+      { name: 'reason', type: 'string' },
     ],
     outputs: [],
   },
@@ -68,6 +76,16 @@ export const CONSENT_REGISTRY_ABI = [
     outputs: [{ name: '', type: 'bool' }],
   },
   {
+    name: 'logAccess',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'dataId', type: 'bytes32' },
+      { name: 'purpose', type: 'string' },
+    ],
+    outputs: [],
+  },
+  {
     name: 'getRecord',
     type: 'function',
     stateMutability: 'view',
@@ -75,8 +93,28 @@ export const CONSENT_REGISTRY_ABI = [
     outputs: [
       { name: 'owner', type: 'address' },
       { name: 'storachaCid', type: 'string' },
+      { name: 'receiptCid', type: 'string' },
       { name: 'dataHash', type: 'string' },
+      { name: 'channelCount', type: 'uint8' },
+      { name: 'sampleRate', type: 'uint256' },
       { name: 'uploadedAt', type: 'uint256' },
+      { name: 'deidentified', type: 'bool' },
+    ],
+  },
+  {
+    name: 'getConsent',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'dataId', type: 'bytes32' },
+      { name: 'researcher', type: 'address' },
+    ],
+    outputs: [
+      { name: 'purpose', type: 'string' },
+      { name: 'grantedAt', type: 'uint256' },
+      { name: 'expiresAt', type: 'uint256' },
+      { name: 'active', type: 'bool' },
+      { name: 'expired', type: 'bool' },
     ],
   },
   {
@@ -87,12 +125,52 @@ export const CONSENT_REGISTRY_ABI = [
     outputs: [{ name: '', type: 'address[]' }],
   },
   {
+    name: 'getAccessLog',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'dataId', type: 'bytes32' }],
+    outputs: [{
+      name: '',
+      type: 'tuple[]',
+      components: [
+        { name: 'researcher', type: 'address' },
+        { name: 'accessedAt', type: 'uint256' },
+        { name: 'purpose', type: 'string' },
+      ],
+    }],
+  },
+  {
+    name: 'totalRecords',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'totalConsents',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'totalAccesses',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
     name: 'DataRegistered',
     type: 'event',
     inputs: [
       { name: 'dataId', type: 'bytes32', indexed: true },
       { name: 'owner', type: 'address', indexed: true },
       { name: 'cid', type: 'string', indexed: false },
+      { name: 'receiptCid', type: 'string', indexed: false },
+      { name: 'channelCount', type: 'uint8', indexed: false },
+      { name: 'sampleRate', type: 'uint256', indexed: false },
+      { name: 'deidentified', type: 'bool', indexed: false },
       { name: 'timestamp', type: 'uint256', indexed: false },
     ],
   },
@@ -103,6 +181,8 @@ export const CONSENT_REGISTRY_ABI = [
       { name: 'dataId', type: 'bytes32', indexed: true },
       { name: 'owner', type: 'address', indexed: true },
       { name: 'researcher', type: 'address', indexed: true },
+      { name: 'purpose', type: 'string', indexed: false },
+      { name: 'expiresAt', type: 'uint256', indexed: false },
     ],
   },
   {
@@ -112,6 +192,17 @@ export const CONSENT_REGISTRY_ABI = [
       { name: 'dataId', type: 'bytes32', indexed: true },
       { name: 'owner', type: 'address', indexed: true },
       { name: 'researcher', type: 'address', indexed: true },
+      { name: 'reason', type: 'string', indexed: false },
+    ],
+  },
+  {
+    name: 'DataAccessed',
+    type: 'event',
+    inputs: [
+      { name: 'dataId', type: 'bytes32', indexed: true },
+      { name: 'researcher', type: 'address', indexed: true },
+      { name: 'purpose', type: 'string', indexed: false },
+      { name: 'timestamp', type: 'uint256', indexed: false },
     ],
   },
 ] as const;

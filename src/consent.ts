@@ -7,11 +7,10 @@ import {
   type PublicClient,
   type WalletClient,
   type Chain,
-  type Log,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { type Config, CONSENT_REGISTRY_ABI } from './config.js';
-import type { DataRecord, ConsentEvent } from './types.js';
+import type { ConsentEvent, ConsentGrant, DataRecord, DataCategory } from './types.js';
 
 const flowTestnet: Chain = {
   id: 545,
@@ -34,7 +33,7 @@ export class ConsentClient {
   public readonly events: ConsentEvent[] = [];
 
   constructor(config: Config) {
-    const chain = config.flowChainId === 545 ? flowTestnet : flowTestnet;
+    const chain = flowTestnet;
 
     this.publicClient = createPublicClient({
       chain,
@@ -62,12 +61,20 @@ export class ConsentClient {
     );
   }
 
-  async registerData(dataId: `0x${string}`, storachaCid: string, dataHash: string): Promise<string> {
+  async registerData(
+    dataId: `0x${string}`,
+    storachaCid: string,
+    receiptCid: string,
+    dataHash: string,
+    channelCount: number,
+    sampleRate: number,
+    deidentified: boolean
+  ): Promise<string> {
     const hash = await (this.ownerWallet as any).writeContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'registerData',
-      args: [dataId, storachaCid, dataHash],
+      args: [dataId, storachaCid, receiptCid, dataHash, channelCount, BigInt(sampleRate), deidentified],
       chain: this.chain,
     });
 
@@ -87,23 +94,31 @@ export class ConsentClient {
     return hash;
   }
 
-  async grantConsent(dataId: `0x${string}`, researcher: `0x${string}`): Promise<string> {
+  async grantConsent(
+    dataId: `0x${string}`,
+    researcher: `0x${string}`,
+    purpose: string,
+    expiresAt: number,
+    categories: DataCategory[]
+  ): Promise<string> {
     const hash = await (this.ownerWallet as any).writeContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'grantConsent',
-      args: [dataId, researcher],
+      args: [dataId, researcher, purpose, BigInt(expiresAt), categories],
       chain: this.chain,
     });
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
-    console.log(`[consent] Consent granted to ${researcher} for ${dataId} tx: ${hash}`);
+    console.log(`[consent] Consent granted to ${researcher} for "${purpose}" tx: ${hash}`);
 
     this.events.push({
       type: 'ConsentGranted',
       dataId,
       owner: this.ownerAddress,
       researcher,
+      purpose,
+      expiresAt,
       timestamp: Date.now(),
       txHash: hash,
       blockNumber: Number(receipt.blockNumber),
@@ -112,23 +127,28 @@ export class ConsentClient {
     return hash;
   }
 
-  async revokeConsent(dataId: `0x${string}`, researcher: `0x${string}`): Promise<string> {
+  async revokeConsent(
+    dataId: `0x${string}`,
+    researcher: `0x${string}`,
+    reason: string
+  ): Promise<string> {
     const hash = await (this.ownerWallet as any).writeContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'revokeConsent',
-      args: [dataId, researcher],
+      args: [dataId, researcher, reason],
       chain: this.chain,
     });
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
-    console.log(`[consent] Consent revoked from ${researcher} for ${dataId} tx: ${hash}`);
+    console.log(`[consent] Consent revoked from ${researcher}: ${reason} tx: ${hash}`);
 
     this.events.push({
       type: 'ConsentRevoked',
       dataId,
       owner: this.ownerAddress,
       researcher,
+      reason,
       timestamp: Date.now(),
       txHash: hash,
       blockNumber: Number(receipt.blockNumber),
@@ -138,13 +158,32 @@ export class ConsentClient {
   }
 
   async hasConsent(dataId: `0x${string}`, researcher: `0x${string}`): Promise<boolean> {
-    const result = await this.publicClient.readContract({
+    return await this.publicClient.readContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'hasConsent',
       args: [dataId, researcher],
-    });
-    return result as boolean;
+    }) as boolean;
+  }
+
+  async getConsent(dataId: `0x${string}`, researcher: `0x${string}`): Promise<ConsentGrant | null> {
+    const result = await this.publicClient.readContract({
+      address: this.contractAddress,
+      abi: CONSENT_REGISTRY_ABI,
+      functionName: 'getConsent',
+      args: [dataId, researcher],
+    }) as [string, bigint, bigint, boolean, boolean];
+
+    if (!result[0]) return null;
+
+    return {
+      purpose: result[0],
+      grantedAt: Number(result[1]),
+      expiresAt: Number(result[2]),
+      active: result[3],
+      expired: result[4],
+      categories: [],
+    };
   }
 
   async getRecord(dataId: `0x${string}`): Promise<DataRecord | null> {
@@ -153,7 +192,7 @@ export class ConsentClient {
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'getRecord',
       args: [dataId],
-    }) as [string, string, string, bigint];
+    }) as [string, string, string, string, number, bigint, bigint, boolean];
 
     if (result[0] === '0x0000000000000000000000000000000000000000') return null;
 
@@ -161,19 +200,47 @@ export class ConsentClient {
       dataId,
       owner: result[0],
       storachaCid: result[1],
-      dataHash: result[2],
-      uploadedAt: Number(result[3]),
+      receiptCid: result[2],
+      dataHash: result[3],
+      channelCount: result[4],
+      sampleRate: Number(result[5]),
+      uploadedAt: Number(result[6]),
+      deidentified: result[7],
     };
   }
 
   async getGrantedResearchers(dataId: `0x${string}`): Promise<string[]> {
-    const result = await this.publicClient.readContract({
+    return await this.publicClient.readContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'getGrantedResearchers',
       args: [dataId],
-    });
-    return result as string[];
+    }) as string[];
+  }
+
+  async getStats(): Promise<{ records: number; consents: number; accesses: number }> {
+    const [records, consents, accesses] = await Promise.all([
+      this.publicClient.readContract({
+        address: this.contractAddress,
+        abi: CONSENT_REGISTRY_ABI,
+        functionName: 'totalRecords',
+      }),
+      this.publicClient.readContract({
+        address: this.contractAddress,
+        abi: CONSENT_REGISTRY_ABI,
+        functionName: 'totalConsents',
+      }),
+      this.publicClient.readContract({
+        address: this.contractAddress,
+        abi: CONSENT_REGISTRY_ABI,
+        functionName: 'totalAccesses',
+      }),
+    ]);
+    return {
+      records: Number(records),
+      consents: Number(consents),
+      accesses: Number(accesses),
+    };
   }
 
   async getBalance(): Promise<string> {

@@ -1,13 +1,15 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import multipart from '@fastify/multipart';
 import { readFileSync } from 'fs';
 import { createConfig } from './config.js';
 import { ConsentClient } from './consent.js';
 import { initLit, encryptData, decryptData, disconnectLit } from './lit.js';
 import { initStoracha, uploadEncrypted, computeDataHash, getGatewayUrl } from './storacha.js';
+import { parseEegMetadata, deidentifyEeg, generateDataSummary } from './eeg.js';
+import { generateConsentReceipt } from './receipt.js';
 import { getDashboardHtml } from './dashboard.js';
-import type { EncryptedUpload } from './types.js';
+import { DataCategory } from './types.js';
+import type { EncryptedUpload, ConsentReceipt } from './types.js';
 
 async function main() {
   const config = createConfig();
@@ -54,12 +56,12 @@ async function main() {
   // --- In-memory state ---
   const uploads = new Map<string, EncryptedUpload>();
   const encryptionCache = new Map<string, { ciphertext: string; dataToEncryptHash: string }>();
+  const receipts = new Map<string, ConsentReceipt[]>();
   const startTime = Date.now();
 
   // --- Fastify Server ---
-  const server = Fastify({ logger: false, bodyLimit: 1_048_576 }); // 1MB
+  const server = Fastify({ logger: false, bodyLimit: 2_097_152 }); // 2MB for EEG files
   await server.register(cors, { origin: true });
-  await server.register(multipart, { limits: { fileSize: 1_048_576 } });
 
   // Dashboard
   server.get('/', async (_req, reply) => {
@@ -69,6 +71,8 @@ async function main() {
   // Health
   server.get('/health', async () => {
     const bal = await consent.getBalance().catch(() => 'unknown');
+    let stats = { records: 0, consents: 0, accesses: 0 };
+    try { stats = await consent.getStats(); } catch {}
     return {
       status: 'ok',
       uptime: Math.floor((Date.now() - startTime) / 1000),
@@ -78,31 +82,60 @@ async function main() {
       chain: `Flow EVM Testnet (${config.flowChainId})`,
       litConnected: !!litClient,
       storachaConnected: !!storachaClient,
-      totalUploads: uploads.size,
+      onChainStats: stats,
+      localUploads: uploads.size,
       totalEvents: consent.events.length,
     };
   });
 
-  // Upload EEG data: encrypt → store → register on-chain
-  server.post('/upload', async (req, reply) => {
+  // Upload EEG data with de-identification
+  server.post<{
+    Body: {
+      data?: string;
+      filename?: string;
+      deidentify?: boolean;
+      stripLabels?: boolean;
+      noiseEpsilon?: number;
+    };
+  }>('/upload', async (req, reply) => {
     try {
-      const body = req.body as { data?: string; filename?: string };
-      let rawData: Uint8Array;
+      const body = req.body || {};
+      let rawData: string;
       let filename: string;
 
-      if (body?.data && body?.filename) {
-        rawData = new TextEncoder().encode(body.data);
-        filename = body.filename;
+      if (body.data) {
+        rawData = body.data;
+        filename = body.filename || 'upload.csv';
       } else {
-        // Try reading sample data
         const samplePath = new URL('../sample-data/sample-eeg.csv', import.meta.url);
-        rawData = new Uint8Array(readFileSync(samplePath));
+        rawData = readFileSync(samplePath, 'utf-8');
         filename = 'sample-eeg.csv';
+      }
+
+      // Parse EEG metadata
+      const metadata = parseEegMetadata(rawData);
+      console.log(`[eeg] Parsed: ${metadata.channelCount} channels, ${metadata.sampleRate}Hz, ${metadata.sampleCount} samples`);
+
+      // De-identify if requested (default: true for privacy)
+      const shouldDeidentify = body.deidentify !== false;
+      let processedData = rawData;
+      let deidentificationLog: string[] = [];
+
+      if (shouldDeidentify) {
+        const result = deidentifyEeg(rawData, {
+          stripLabels: body.stripLabels,
+          addNoise: true,
+          noiseEpsilon: body.noiseEpsilon || 1.0,
+        });
+        processedData = result.data;
+        deidentificationLog = result.modifications;
+        console.log(`[eeg] De-identified: ${deidentificationLog.join(', ')}`);
       }
 
       const timestamp = Math.floor(Date.now() / 1000);
       const dataId = consent.generateDataId(consent.ownerAddress, filename, timestamp);
-      const dataHash = computeDataHash(rawData);
+      const dataBytes = new TextEncoder().encode(processedData);
+      const dataHash = computeDataHash(dataBytes);
 
       // Step 1: Encrypt with Lit Protocol
       let ciphertext: string;
@@ -110,51 +143,44 @@ async function main() {
 
       if (litClient) {
         const encrypted = await encryptData(
-          litClient,
-          rawData,
-          dataId,
-          config.consentRegistryAddress,
-          config.flowRpcUrl,
-          config.flowChainId
+          litClient, dataBytes, dataId,
+          config.consentRegistryAddress, config.flowRpcUrl, config.flowChainId
         );
         ciphertext = encrypted.ciphertext;
         dataToEncryptHash = encrypted.dataToEncryptHash;
       } else {
-        // Fallback: base64 encode (not secure, for demo when Lit unavailable)
-        ciphertext = Buffer.from(rawData).toString('base64');
+        ciphertext = Buffer.from(dataBytes).toString('base64');
         dataToEncryptHash = dataHash;
-        console.warn('[upload] Lit unavailable — using base64 fallback (not encrypted)');
+        console.warn('[upload] Lit unavailable — using base64 fallback');
       }
 
       // Step 2: Upload encrypted data to Storacha
       let storachaCid: string;
       if (storachaClient) {
-        storachaCid = await uploadEncrypted(
-          storachaClient,
-          new TextEncoder().encode(ciphertext),
-          filename
-        );
+        storachaCid = await uploadEncrypted(storachaClient, new TextEncoder().encode(ciphertext), filename);
       } else {
-        // Fallback: generate a mock CID
         storachaCid = `local:${dataHash.substring(0, 16)}`;
         console.warn('[upload] Storacha unavailable — using local reference');
       }
 
       // Step 3: Register on Flow EVM
-      const txHash = await consent.registerData(dataId, storachaCid, dataHash);
+      const txHash = await consent.registerData(
+        dataId, storachaCid, '', dataHash,
+        metadata.channelCount, metadata.sampleRate, shouldDeidentify
+      );
 
       // Cache
       const upload: EncryptedUpload = {
-        dataId,
-        storachaCid,
-        dataHash,
-        txHash,
-        owner: consent.ownerAddress,
-        filename,
-        timestamp,
+        dataId, storachaCid, receiptCid: '', dataHash, txHash,
+        owner: consent.ownerAddress, filename,
+        channelCount: metadata.channelCount, sampleRate: metadata.sampleRate,
+        deidentified: shouldDeidentify, timestamp,
       };
       uploads.set(dataId, upload);
       encryptionCache.set(dataId, { ciphertext, dataToEncryptHash });
+
+      // Generate data summary (non-revealing)
+      const summary = generateDataSummary(rawData);
 
       return {
         success: true,
@@ -164,6 +190,18 @@ async function main() {
         dataHash,
         txHash,
         explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
+        metadata: {
+          channels: metadata.channels,
+          channelCount: metadata.channelCount,
+          sampleRate: metadata.sampleRate,
+          duration: `${metadata.duration.toFixed(1)}s`,
+          sampleCount: metadata.sampleCount,
+        },
+        deidentification: shouldDeidentify ? {
+          applied: true,
+          modifications: deidentificationLog,
+        } : { applied: false },
+        summary,
         timestamp,
       };
     } catch (err) {
@@ -174,25 +212,86 @@ async function main() {
     }
   });
 
-  // Grant consent
-  server.post<{ Body: { dataId: string; researcher: string } }>('/consent/grant', async (req, reply) => {
+  // Grant purpose-limited, time-expiring consent
+  server.post<{
+    Body: {
+      dataId: string;
+      researcher: string;
+      purpose: string;
+      purposeDescription?: string;
+      expiresAt?: number; // unix timestamp
+      expiresInDays?: number;
+      categories?: number[]; // DataCategory enum values
+    };
+  }>('/consent/grant', async (req, reply) => {
     try {
-      const { dataId, researcher } = req.body;
-      if (!dataId || !researcher) {
+      const { dataId, researcher, purpose } = req.body;
+      if (!dataId || !researcher || !purpose) {
         reply.code(400);
-        return { error: 'Required: dataId, researcher' };
+        return { error: 'Required: dataId, researcher, purpose' };
+      }
+
+      const categories = req.body.categories?.length
+        ? req.body.categories
+        : [DataCategory.PROCESSED_FEATURES, DataCategory.INFERENCES];
+
+      let expiresAt = req.body.expiresAt || 0;
+      if (!expiresAt && req.body.expiresInDays) {
+        expiresAt = Math.floor(Date.now() / 1000) + (req.body.expiresInDays * 86400);
       }
 
       const txHash = await consent.grantConsent(
         dataId as `0x${string}`,
-        researcher as `0x${string}`
+        researcher as `0x${string}`,
+        purpose,
+        expiresAt,
+        categories
       );
+
+      // Generate W3C consent receipt
+      const upload = uploads.get(dataId);
+      const receipt = generateConsentReceipt({
+        dataId,
+        dataOwner: consent.ownerAddress,
+        researcher,
+        purpose,
+        purposeDescription: req.body.purposeDescription || purpose,
+        categories,
+        expiresAt,
+        deidentified: upload?.deidentified ?? false,
+        txHash,
+        storachaCid: upload?.storachaCid || '',
+        contractAddress: config.consentRegistryAddress,
+      });
+
+      // Store receipt on Storacha
+      let receiptCid = '';
+      if (storachaClient) {
+        const receiptBytes = new TextEncoder().encode(JSON.stringify(receipt, null, 2));
+        receiptCid = await uploadEncrypted(
+          storachaClient,
+          receiptBytes,
+          `receipt-${receipt.receiptId}.json`
+        );
+        receipt.proofs.storachaCid = receiptCid;
+      }
+
+      // Track receipts locally
+      if (!receipts.has(dataId)) receipts.set(dataId, []);
+      receipts.get(dataId)!.push(receipt);
 
       return {
         success: true,
         txHash,
         explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
-        message: `Consent granted to ${researcher} for ${dataId}`,
+        consent: {
+          purpose,
+          categories: categories.map(c => ({ id: c, label: ['Raw EEG', 'Processed Features', 'Inferences', 'Metadata'][c] })),
+          expiresAt: expiresAt > 0 ? new Date(expiresAt * 1000).toISOString() : 'never',
+        },
+        receipt,
+        receiptCid: receiptCid || null,
+        receiptUrl: receiptCid ? getGatewayUrl(receiptCid) : null,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -201,10 +300,10 @@ async function main() {
     }
   });
 
-  // Revoke consent
-  server.post<{ Body: { dataId: string; researcher: string } }>('/consent/revoke', async (req, reply) => {
+  // Revoke consent with reason
+  server.post<{ Body: { dataId: string; researcher: string; reason?: string } }>('/consent/revoke', async (req, reply) => {
     try {
-      const { dataId, researcher } = req.body;
+      const { dataId, researcher, reason } = req.body;
       if (!dataId || !researcher) {
         reply.code(400);
         return { error: 'Required: dataId, researcher' };
@@ -212,14 +311,15 @@ async function main() {
 
       const txHash = await consent.revokeConsent(
         dataId as `0x${string}`,
-        researcher as `0x${string}`
+        researcher as `0x${string}`,
+        reason || 'Consent withdrawn by data owner'
       );
 
       return {
         success: true,
         txHash,
         explorerUrl: `https://evm-testnet.flowscan.io/tx/${txHash}`,
-        message: `Consent revoked from ${researcher} for ${dataId}`,
+        message: `Consent revoked. Reason: ${reason || 'Consent withdrawn by data owner'}`,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -228,7 +328,7 @@ async function main() {
     }
   });
 
-  // Check consent status
+  // Check consent status with full detail
   server.get<{ Params: { dataId: string } }>('/consent/:dataId', async (req, reply) => {
     try {
       const { dataId } = req.params;
@@ -239,12 +339,20 @@ async function main() {
       }
 
       const researchers = await consent.getGrantedResearchers(dataId as `0x${string}`);
-      const consentStatus: Record<string, boolean> = {};
+      const consentDetails: Record<string, any> = {};
+
       for (const r of researchers) {
-        consentStatus[r] = await consent.hasConsent(dataId as `0x${string}`, r as `0x${string}`);
+        const grant = await consent.getConsent(dataId as `0x${string}`, r as `0x${string}`);
+        const hasAccess = await consent.hasConsent(dataId as `0x${string}`, r as `0x${string}`);
+        consentDetails[r] = { ...grant, currentlyValid: hasAccess };
       }
 
-      return { record, researchers, consentStatus };
+      return {
+        record,
+        researchers,
+        consentDetails,
+        receipts: receipts.get(dataId) || [],
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       reply.code(500);
@@ -261,7 +369,6 @@ async function main() {
         return { success: false, error: 'Required: dataId, researcherPrivateKey' };
       }
 
-      // Check on-chain consent first
       const { privateKeyToAccount } = await import('viem/accounts');
       const researcherAccount = privateKeyToAccount(researcherPrivateKey as `0x${string}`);
       const hasAccess = await consent.hasConsent(
@@ -270,10 +377,16 @@ async function main() {
       );
 
       if (!hasAccess) {
+        const consentInfo = await consent.getConsent(
+          dataId as `0x${string}`,
+          researcherAccount.address
+        );
         reply.code(403);
         return {
           success: false,
-          error: 'Consent not granted. The data owner has not authorized your address.',
+          error: consentInfo?.expired
+            ? 'Consent has expired. Request renewal from the data owner.'
+            : 'Consent not granted. The data owner has not authorized your address.',
           researcher: researcherAccount.address,
           dataId,
         };
@@ -287,16 +400,11 @@ async function main() {
 
       if (litClient) {
         const decrypted = await decryptData(
-          litClient,
-          cached.ciphertext,
-          cached.dataToEncryptHash,
-          dataId,
-          config.consentRegistryAddress,
+          litClient, cached.ciphertext, cached.dataToEncryptHash,
+          dataId, config.consentRegistryAddress,
           researcherPrivateKey as `0x${string}`,
-          config.flowRpcUrl,
-          config.flowChainId
+          config.flowRpcUrl, config.flowChainId
         );
-
         return {
           success: true,
           data: new TextDecoder().decode(decrypted),
@@ -305,7 +413,6 @@ async function main() {
           message: 'Decryption successful — consent verified on-chain via Lit Protocol',
         };
       } else {
-        // Fallback: base64 decode
         const decoded = Buffer.from(cached.ciphertext, 'base64').toString('utf-8');
         return {
           success: true,
@@ -336,6 +443,11 @@ async function main() {
   server.get('/events', async () => ({
     events: consent.events.slice(-50),
     total: consent.events.length,
+  }));
+
+  // Get consent receipt by dataId
+  server.get<{ Params: { dataId: string } }>('/receipts/:dataId', async (req) => ({
+    receipts: receipts.get(req.params.dataId) || [],
   }));
 
   // Start
