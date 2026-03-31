@@ -30,6 +30,7 @@ export class ConsentClient {
   public readonly ownerWallet: WalletClient;
   public readonly ownerAddress: string;
   private readonly contractAddress: `0x${string}`;
+  private readonly chain: Chain;
   public readonly events: ConsentEvent[] = [];
 
   constructor(config: Config) {
@@ -45,10 +46,11 @@ export class ConsentClient {
       account,
       chain,
       transport: http(config.flowRpcUrl),
-    });
+    }) as any;
 
     this.ownerAddress = account.address;
     this.contractAddress = config.consentRegistryAddress;
+    this.chain = chain;
   }
 
   generateDataId(owner: string, filename: string, timestamp: number): `0x${string}` {
@@ -61,11 +63,12 @@ export class ConsentClient {
   }
 
   async registerData(dataId: `0x${string}`, storachaCid: string, dataHash: string): Promise<string> {
-    const hash = await this.ownerWallet.writeContract({
+    const hash = await (this.ownerWallet as any).writeContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'registerData',
       args: [dataId, storachaCid, dataHash],
+      chain: this.chain,
     });
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
@@ -85,11 +88,12 @@ export class ConsentClient {
   }
 
   async grantConsent(dataId: `0x${string}`, researcher: `0x${string}`): Promise<string> {
-    const hash = await this.ownerWallet.writeContract({
+    const hash = await (this.ownerWallet as any).writeContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'grantConsent',
       args: [dataId, researcher],
+      chain: this.chain,
     });
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });
@@ -109,11 +113,12 @@ export class ConsentClient {
   }
 
   async revokeConsent(dataId: `0x${string}`, researcher: `0x${string}`): Promise<string> {
-    const hash = await this.ownerWallet.writeContract({
+    const hash = await (this.ownerWallet as any).writeContract({
       address: this.contractAddress,
       abi: CONSENT_REGISTRY_ABI,
       functionName: 'revokeConsent',
       args: [dataId, researcher],
+      chain: this.chain,
     });
 
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash });

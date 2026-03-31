@@ -1,11 +1,6 @@
 import { LitNodeClient } from '@lit-protocol/lit-node-client';
-import { LitNetwork } from '@lit-protocol/constants';
-import {
-  createSiweMessage,
-  generateAuthSig,
-  LitAbility,
-  LitActionResource,
-} from '@lit-protocol/auth-helpers';
+import * as LitConstants from '@lit-protocol/constants';
+import * as AuthHelpers from '@lit-protocol/auth-helpers';
 import { createWalletClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
@@ -16,7 +11,7 @@ export async function initLit(network: string): Promise<LitNodeClient> {
 
   console.log(`[lit] Connecting to Lit network: ${network}...`);
   const client = new LitNodeClient({
-    litNetwork: network as LitNetwork,
+    litNetwork: network as any,
     debug: false,
   });
 
@@ -99,6 +94,11 @@ export async function getSessionSigs(
     transport: http(),
   });
 
+  const LitActionResource = (AuthHelpers as any).LitActionResource || class { constructor(public resource: string) {} };
+  const LitAbility = (AuthHelpers as any).LitAbility || { LitActionExecution: 'lit-action-execution' };
+  const createSiweMessage = (AuthHelpers as any).createSiweMessage;
+  const generateAuthSig = (AuthHelpers as any).generateAuthSig;
+
   const sessionSigs = await client.getSessionSigs({
     chain: 'ethereum',
     expiration: new Date(Date.now() + 1000 * 60 * 10).toISOString(),
@@ -108,7 +108,7 @@ export async function getSessionSigs(
         ability: LitAbility.LitActionExecution,
       },
     ],
-    authNeededCallback: async ({ uri, expiration, resourceAbilityRequests }) => {
+    authNeededCallback: async ({ uri, expiration, resourceAbilityRequests }: any) => {
       const toSign = await createSiweMessage({
         uri: uri!,
         expiration: expiration!,

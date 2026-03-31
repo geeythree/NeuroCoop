@@ -32,7 +32,7 @@ export async function uploadEncrypted(
 ): Promise<string> {
   console.log(`[storacha] Uploading encrypted file: ${filename} (${encryptedData.length} bytes)`);
 
-  const blob = new Blob([encryptedData], { type: 'application/octet-stream' });
+  const blob = new Blob([Buffer.from(encryptedData)], { type: 'application/octet-stream' });
   const file = new File([blob], `${filename}.encrypted`);
 
   const cid = await client.uploadFile(file);
