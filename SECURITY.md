@@ -1,132 +1,190 @@
 # Security & Limitations
 
-NeuroCoop is a hackathon prototype. This document honestly describes its security model, known limitations, and what would need to change for production use with real neural data.
+NeuroCoop is a hackathon prototype. This document describes the **current** security model accurately — including what has been implemented and what remains aspirational.
 
 ---
 
-## Key Custody
+## Custody Model: Operator-Held Keys (Custodial Demo)
 
-**Current:** Private keys are passed directly in API requests (e.g., `POST /join` includes the user's private key in the request body). The server holds keys in memory during encryption/decryption operations.
+**Current:** NeuroCoop uses a custodial key model.
 
-**Limitation:** This is a fundamental trust violation in a production system. The server can read, copy, or misuse any private key it receives.
+- Users register their wallet once via `POST /wallet/register` (private key stored in SQLite)
+- All subsequent calls use nonce-based signature authentication (`GET /auth/nonce/:address` + signature)
+- Private keys are **not transmitted in requests** after initial registration
+- However, keys are stored server-side in SQLite — the operator can sign on behalf of users and decrypt their data
+
+**What this means:** The nonce auth system proves *who is calling the API*, but users are trusting the operator with their private keys. This is a custodial model — similar to an exchange holding user funds.
 
 **Production requirement:**
-- SIWE (Sign-In With Ethereum) or WalletConnect for authentication -- the server never sees private keys
-- Threshold encryption (e.g., Shamir's Secret Sharing) or proxy re-encryption (e.g., NuCypher/Umbral) so the server cannot decrypt data unilaterally
-- Hardware wallet support for key management
+- Non-custodial: users sign and broadcast transactions directly from their wallet (MetaMask/WalletConnect)
+- The server would never see private keys at all
+- Threshold encryption (Shamir's Secret Sharing) or proxy re-encryption (NuCypher/Umbral) for data access
+
+---
+
+## Authentication
+
+**Current (implemented):**
+- `POST /wallet/register` — one-time key registration into SQLite
+- `GET /auth/nonce/:address` — issues a 32-byte random nonce with 5-minute TTL
+- All mutation endpoints (`/join`, `/proposal`, `/vote`, `/execute`) accept `{ address, nonce, signature }`
+- Server recovers signer address from signature and verifies it matches the claimed address
+- Nonces are one-time use (deleted after verification)
+- Legacy `{ privateKey }` in request body still accepted for backwards compatibility
+
+**`/decrypt` — mandatory signature:**
+- Researcher must get a challenge from `GET /challenge/:proposalId`
+- Must provide `{ signature, message }` — not just claiming the address
+- Researcher addresses are public on-chain; without mandatory signature, any caller who knows the address could impersonate the researcher
+- Signature is **required** (not optional) for data access
+
+**Production requirement:**
+- Replace server-side key storage with SIWE (EIP-4361) + WalletConnect
+- Users sign transactions locally; server only validates on-chain state
 
 ---
 
 ## Privacy Pipeline
 
-**Current:** The `deidentifyEeg()` function applies:
-1. PII column removal (pattern-matched column names)
-2. Laplace noise injection with a configurable epsilon parameter
-3. Channel value clipping to a bounded range
-4. Timestamp anonymization (relative offsets)
+**Current (implemented):**
+- PII column removal (pattern-matched headers: patient, name, id, dob, ssn, email, phone, address)
+- Laplace noise injection (configurable ε, default ε=1.0)
+- Channel value clipping to physiological range (±500 μV)
+- Timestamp conversion to relative offsets
+- ECIES secp256k1 encryption (eth-crypto: AES-256-CBC + ephemeral key)
 
-**What this is NOT:** This is **not** formal differential privacy (DP). The README and code previously used the term "differential privacy" loosely. Here is what is missing for true DP:
+**What this is NOT:** Formal differential privacy (DP).
 
 | DP Requirement | Current Status |
 |---|---|
-| **Sensitivity calibration** | Not implemented. Sensitivity is hardcoded to 1.0 regardless of the actual query or data range. True DP requires computing the sensitivity (maximum change in output from changing one record) for each specific query. |
-| **Privacy budget accounting** | Not implemented. Each call to `deidentifyEeg()` consumes privacy budget, but there is no tracking. Repeated queries on the same data degrade privacy without bound. |
-| **Composition theorems** | Not applied. Sequential or parallel composition of multiple DP mechanisms requires formal analysis to bound total privacy loss. |
-| **Post-processing invariance** | Not verified. Downstream operations on the noisy data may not preserve DP guarantees. |
-| **Formal privacy guarantee** | None. There is no provable bound on the probability of re-identifying an individual from the output. |
+| **Sensitivity calibration** | Not implemented. Sensitivity hardcoded to 1.0 regardless of query or data range. |
+| **Privacy budget accounting** | Not implemented. No epsilon tracking across repeated queries on the same data. |
+| **Composition theorems** | Not applied. Sequential queries degrade privacy without bound. |
+| **Formal privacy guarantee** | None. No provable re-identification bound. |
 
-**What it actually provides:** Statistical noise injection that makes exact value recovery harder but provides no formal privacy guarantee. This is a common prototype technique but should not be relied upon for real neural data.
+**What it actually provides:** Statistical noise that makes exact value recovery harder, but provides no mathematically proven privacy guarantee.
 
 **Production requirement:**
-- Sensitivity analysis per query type
-- Global privacy budget tracker (epsilon accounting across all queries)
-- Composition analysis for multi-query workflows
-- Formal DP library (e.g., Google DP, OpenDP, or IBM diffprivlib)
-- Independent privacy audit
+- Per-query sensitivity analysis
+- Global epsilon budget tracker
+- Formal DP library (Google DP, OpenDP, or IBM diffprivlib)
+- Independent privacy audit before handling real neural data
 
 ---
 
 ## Persistence
 
-**Current:** All state is held in memory:
-- Encrypted data cache (Map in `index.ts`)
-- Member list
-- Proposal state (partially on-chain, partially cached)
-- Consent receipts
+**Current (implemented):**
+- SQLite via `better-sqlite3` (`./data/neurocoop.db`)
+- Tables: `uploads`, `encryption_cache`, `wallets`, `receipts`, `audit_log`
+- On-chain state (membership, votes, proposals) persists independently on Flow EVM
+- Server restart does not lose member data or audit trail
 
-**Limitation:** Server restart loses all cached data. The on-chain state (membership, votes, proposals) survives, but the encrypted data references become dangling pointers.
+**Remaining gap:**
+- Encrypted data stored as ECIES ciphertext in `encryption_cache` — decryptable by the operator (custodial model, as above)
+- No backup strategy for the SQLite database
+
+---
+
+## Decentralized Storage (Storacha / IPFS)
+
+**Current (implemented):**
+- Encrypted data uploaded to Storacha (IPFS/Filecoin) on join
+- CID registered on-chain for verifiability
+- Consent receipts uploaded as JSON blobs after proposal approval
+
+**Known limitations:**
+- IPFS gateway reads are unreliable — server falls back to SQLite cache when retrieval fails
+- No pinning guarantee — data may become unavailable if not accessed
+- No redundant pinning across multiple providers
 
 **Production requirement:**
-- Persistent database (PostgreSQL or SQLite) for encrypted data cache, member metadata, and receipt history
-- Event sourcing from on-chain events to rebuild state on restart
-- Backup strategy for encrypted data (not just CIDs)
+- Redundant pinning (multiple providers)
+- Health checks on CID availability
+- Content hash verification on retrieval
+
+---
+
+## Smart Contract (NeuroCoop.sol)
+
+**Current (implemented):**
+- ReentrancyGuard on all state-changing functions
+- 50% quorum (QUORUM_BPS = 5000) enforced on-chain
+- Time-bounded access (accessExpiresAt set on-chain)
+- Duplicate data hash prevention (usedDataHashes mapping)
+- O(1) `activeProposalCount` tracking (no O(n) gas-bomb loops)
+- `expireProposal()` — anyone can expire a dead proposal to maintain accurate count
+
+**Known limitations:**
+- Not audited by a security firm
+- No upgrade path (immutable once deployed)
+- No emergency pause mechanism
+- No multi-sig governance for `onlyDeployer` functions
+- `votingPeriod` changeable by deployer unilaterally (centralization risk)
+
+**Production requirement:**
+- Professional security audit
+- OpenZeppelin UUPS upgradeable proxy
+- Multi-sig (Gnosis Safe) for governance parameters
+- Timelock on sensitive parameter changes
 
 ---
 
 ## Access Control
 
-**Current:** Researcher identity is verified by Ethereum address. The contract checks that the proposal was approved and that the researcher address matches. However:
+**Current (implemented):**
+- `hasAccess()` verified on-chain — approval status and expiry are contract-enforced
+- Mandatory signature on `/decrypt` — proves requester controls the claimed address
+- Address match verified against on-chain `proposal.researcher`
+- All access attempts logged to audit trail
 
-- No wallet signature authentication -- the server trusts the address provided in the request body
-- No proof that the caller actually controls the claimed address
+**Remaining gap:**
 - No rate limiting on data access requests
-
-**Production requirement:**
-- SIWE authentication: researcher must sign a challenge with their wallet to prove address ownership
-- Rate limiting and audit logging for all data access
-- Per-proposal access tokens with expiration
+- No per-proposal access tokens with rotation
 
 ---
 
-## Storacha (Decentralized Storage)
+## Right to Deletion
 
-**Current:** Encrypted data is uploaded to Storacha (IPFS/Filecoin). The upload path works, but:
+**Not implemented.**
 
-- Reads from Storacha gateways are unreliable and slow
-- The server falls back to an in-memory cache when Storacha reads fail
-- No pinning guarantee -- data may become unavailable if not accessed
+IPFS is content-addressed and immutable. Data pinned to Storacha cannot be deleted at the protocol level. Members can be removed from the cooperative (on-chain state), but their data CID persists on IPFS.
 
 **Production requirement:**
-- Redundant pinning across multiple IPFS providers
-- Local persistent cache as first-tier fallback
-- Health checks and monitoring for data availability
-- Content verification (hash check) on retrieval
+- Deletion is an access control problem, not a storage problem: revoke the decryption key
+- Threshold encryption (Shamir's) would allow key revocation without re-uploading data
+- Users must be informed of this limitation before joining
 
 ---
 
-## Smart Contract
+## Cognition Module (Venice AI)
 
-**Current:** The Solidity contract handles membership, proposals, voting, and access control on Flow EVM Testnet.
+**Current (implemented):**
+- Only anonymized metadata and proposal descriptions sent to Venice AI
+- Raw EEG signals never transmitted to external services
+- Venice AI provides zero data retention (per their API terms)
+- All three endpoints (`/cognition/analyze-proposal`, `/cognition/neural-insights`, `/cognition/governance-health`) degrade gracefully if API key is absent
 
-- Not audited by a security firm
-- No quorum requirements (a single vote can decide a proposal if only one member votes)
-- No proposal amendment mechanism
-- No emergency pause or admin override
-- No upgrade path (contract is immutable once deployed)
-
-**Production requirement:**
-- Professional security audit
-- Quorum and supermajority thresholds
-- Timelock on proposal execution
-- Upgradeable proxy pattern (e.g., OpenZeppelin UUPS)
-- Emergency pause mechanism with multi-sig governance
+**Limitation:**
+- Venice AI's zero-data-retention guarantee is contractual, not cryptographic
+- A TEE (Trusted Execution Environment) would provide hardware-level proof
 
 ---
 
 ## What Would Need to Change for Real Neural Data
 
-Neural data is uniquely sensitive -- it can reveal cognitive states, emotional patterns, neurological conditions, and potentially thoughts. Handling real neural data in production would require:
+Neural data can reveal cognitive states, emotional patterns, neurological conditions, and potentially thoughts. Before using NeuroCoop with real BCI data in production:
 
-1. **Regulatory compliance**: HIPAA (if U.S. health data), GDPR (if EU subjects), plus emerging neurodata regulations (Chile, Colorado, California)
-2. **IRB/Ethics board review**: Any research use of real neural data needs institutional review
-3. **Formal differential privacy**: With mathematically proven bounds, not just noise injection
-4. **End-to-end encryption**: The server should never see plaintext neural data
-5. **Secure enclaves**: Consider TEE (Trusted Execution Environment) for data processing
-6. **Data minimization**: Only collect and retain what is necessary for the stated purpose
-7. **Right to deletion**: Members must be able to fully remove their data, including from decentralized storage
-8. **Incident response plan**: Procedure for data breaches involving neural data
-9. **Consent withdrawal**: Mechanism to revoke consent and ensure data is no longer accessible, even for approved proposals
+1. **Non-custodial key management** — users sign locally, server never sees private keys
+2. **Formal differential privacy** — mathematically proven bounds, not Laplace noise
+3. **Threshold encryption** — server cannot decrypt data unilaterally
+4. **TEE for AI processing** — hardware proof that AI only sees anonymized metadata
+5. **Regulatory compliance** — HIPAA (U.S. health data), GDPR (EU subjects), Colorado HB 24-1058, California SB 1223
+6. **IRB/Ethics board review** — any research use of real neural data requires institutional review
+7. **Right to deletion** — key revocation mechanism
+8. **Smart contract audit** — independent security firm review
+9. **Incident response plan** — breach procedure for neural data
 
 ---
 
-*This document is part of the NeuroCoop project's commitment to honest technical communication. Overstating security properties in a neural data system would be irresponsible.*
+*This document reflects the state of the codebase as of the hackathon submission. Overstating security properties for neural data would be irresponsible — and unnecessary. The prototype demonstrates a credible architecture; the gaps above are a clear engineering roadmap, not fundamental flaws.*

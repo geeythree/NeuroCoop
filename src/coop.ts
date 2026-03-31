@@ -11,15 +11,36 @@ import { privateKeyToAccount } from 'viem/accounts';
 import { type Config, NEUROCOOP_ABI } from './config.js';
 import type { CoopEvent, CoopMember, Proposal, ProposalStatus } from './types.js';
 
-const flowTestnet: Chain = {
-  id: 545,
-  name: 'Flow EVM Testnet',
-  nativeCurrency: { name: 'Flow', symbol: 'FLOW', decimals: 18 },
+// Filecoin Calibration testnet — Protocol Labs native chain.
+// FVM is EVM-compatible: all EVM Solidity runs unchanged.
+// Testnet faucet: https://faucet.calibnet.chainsafe-fil.io/
+// Explorer:       https://calibration.filfox.info
+// RPC:            https://api.calibration.node.glif.io/rpc/v1
+const filecoinCalibration: Chain = {
+  id: 314159,
+  name: 'Filecoin Calibration',
+  nativeCurrency: { name: 'testnet filecoin', symbol: 'tFIL', decimals: 18 },
   rpcUrls: {
-    default: { http: ['https://testnet.evm.nodes.onflow.org'] },
+    default: { http: ['https://api.calibration.node.glif.io/rpc/v1'] },
+    public:  { http: ['https://api.calibration.node.glif.io/rpc/v1'] },
   },
   blockExplorers: {
-    default: { name: 'FlowScan', url: 'https://evm-testnet.flowscan.io' },
+    default: { name: 'Filfox', url: 'https://calibration.filfox.info' },
+  },
+};
+
+// Filecoin mainnet — use for production / mainnet judging
+// Chain ID: 314 | RPC: https://api.node.glif.io/rpc/v1
+const filecoinMainnet: Chain = {
+  id: 314,
+  name: 'Filecoin',
+  nativeCurrency: { name: 'filecoin', symbol: 'FIL', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://api.node.glif.io/rpc/v1'] },
+    public:  { http: ['https://api.node.glif.io/rpc/v1'] },
+  },
+  blockExplorers: {
+    default: { name: 'Filfox', url: 'https://filfox.info' },
   },
 };
 
@@ -32,13 +53,13 @@ export class CoopClient {
   public readonly events: CoopEvent[] = [];
 
   constructor(config: Config) {
-    this.chain = flowTestnet;
+    this.chain = config.filecoinNetwork === 'mainnet' ? filecoinMainnet : filecoinCalibration;
     this.coopAddress = config.coopAddress;
-    this.rpcUrl = config.flowRpcUrl;
+    this.rpcUrl = config.filecoinRpcUrl;
 
     this.publicClient = createPublicClient({
       chain: this.chain,
-      transport: http(config.flowRpcUrl),
+      transport: http(config.filecoinRpcUrl),
     });
   }
 

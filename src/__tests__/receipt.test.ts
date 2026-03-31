@@ -122,7 +122,7 @@ describe('generateCoopReceipt', () => {
     const receipt = generateCoopReceipt(DEFAULT_PARAMS);
     expect(receipt.proofs.executionTxHash).toBe(DEFAULT_PARAMS.executionTxHash);
     expect(receipt.proofs.storachaCid).toBe(DEFAULT_PARAMS.storachaCid);
-    expect(receipt.proofs.flowExplorerUrl).toContain(DEFAULT_PARAMS.executionTxHash);
+    expect(receipt.proofs.filecoinExplorerUrl).toContain(DEFAULT_PARAMS.executionTxHash);
   });
 
   it('includes neurorights framework references', () => {

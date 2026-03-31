@@ -110,7 +110,7 @@ export interface ConsentReceipt {
   proofs: {
     executionTxHash: string;
     storachaCid: string;
-    flowExplorerUrl: string;
+    filecoinExplorerUrl: string;
   };
   framework: {
     neurorights: string[];

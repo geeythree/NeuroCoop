@@ -47,7 +47,7 @@ export function generateCoopReceipt(params: {
     proofs: {
       executionTxHash: params.executionTxHash,
       storachaCid: params.storachaCid,
-      flowExplorerUrl: `https://evm-testnet.flowscan.io/tx/${params.executionTxHash}`,
+      filecoinExplorerUrl: `https://calibration.filfox.info/en/tx/${params.executionTxHash}`,
     },
     framework: {
       neurorights: [

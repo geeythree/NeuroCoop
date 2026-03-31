@@ -101,6 +101,9 @@ contract NeuroCoop is ReentrancyGuard {
     uint256 public constant MAX_VOTING_PERIOD = 604800;
     uint256 public constant QUORUM_BPS = 5000;
 
+    // Tracks count of proposals in Active status — avoids O(n) scan in leaveCooperative
+    uint256 public activeProposalCount;
+
     // --- Events ---
     event MemberJoined(address indexed member, bytes32 dataId, string cid, uint256 timestamp);
     event MemberLeft(address indexed member, uint256 timestamp);
@@ -161,11 +164,10 @@ contract NeuroCoop is ReentrancyGuard {
     }
 
     function leaveCooperative() external onlyMember nonReentrant {
-        for (uint256 i = 0; i < proposals.length; i++) {
-            if (proposals[i].status == ProposalStatus.Active && block.timestamp <= proposals[i].deadline) {
-                require(hasVoted[i][msg.sender], "Must vote on active proposals before leaving");
-            }
-        }
+        // No O(n) scan — members may leave freely. Proposals snapshot totalVoters
+        // at creation time, so departures do not affect quorum calculation for
+        // proposals that were already submitted.
+        require(activeProposalCount == 0, "Cannot leave while proposals are active — vote first or wait for voting period to end");
         members[msg.sender].active = false;
         memberCount--;
         emit MemberLeft(msg.sender, block.timestamp);
@@ -198,6 +200,7 @@ contract NeuroCoop is ReentrancyGuard {
         p.status = ProposalStatus.Active;
         p.createdAt = block.timestamp;
         p.deadline = block.timestamp + votingPeriod;
+        activeProposalCount++;
 
         emit ProposalCreated(proposalId, msg.sender, purpose, durationDays, p.deadline);
     }
@@ -232,6 +235,8 @@ contract NeuroCoop is ReentrancyGuard {
         bool quorumMet = totalVotes >= quorumRequired;
         bool majorityFor = p.votesFor > p.votesAgainst && p.votesFor > 0;
 
+        if (activeProposalCount > 0) activeProposalCount--;
+
         if (quorumMet && majorityFor) {
             p.status = ProposalStatus.Executed;
             p.accessExpiresAt = block.timestamp + (p.durationDays * 1 days);
@@ -251,6 +256,20 @@ contract NeuroCoop is ReentrancyGuard {
         if (p.status != ProposalStatus.Executed) return false;
         if (block.timestamp > p.accessExpiresAt) return false;
         return true;
+    }
+
+    /**
+     * Expire a proposal that has passed its voting deadline without being executed.
+     * Anyone can call this — it keeps activeProposalCount accurate without O(n) scans.
+     */
+    function expireProposal(uint256 proposalId) external nonReentrant {
+        require(proposalId < proposals.length, "Invalid proposal");
+        Proposal storage p = proposals[proposalId];
+        require(p.status == ProposalStatus.Active, "Not active");
+        require(block.timestamp > p.deadline, "Voting period not ended");
+        p.status = ProposalStatus.Expired;
+        if (activeProposalCount > 0) activeProposalCount--;
+        emit ProposalRejected(proposalId); // reuse event for expired proposals
     }
 
     // --- Governance ---

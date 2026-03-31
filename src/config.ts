@@ -2,21 +2,25 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export interface Config {
-  readonly flowRpcUrl: string;
-  readonly flowChainId: number;
+  readonly filecoinRpcUrl: string;
+  readonly filecoinChainId: number;
+  readonly filecoinNetwork: 'calibration' | 'mainnet';
+  readonly filecoinExplorerUrl: string;
   readonly coopAddress: `0x${string}`;
   readonly ownerPrivateKey: `0x${string}`;
   readonly storachaEmail: string;
   readonly port: number;
+  readonly veniceApiKey: string;
 }
 
 export function createConfig(): Config {
   const coopAddress = process.env.COOP_ADDRESS || '';
   const ownerPrivateKey = process.env.OWNER_PRIVATE_KEY || '';
+  const network = (process.env.FILECOIN_NETWORK || 'calibration') as 'calibration' | 'mainnet';
 
   if (!coopAddress || !coopAddress.startsWith('0x') || coopAddress.length !== 42) {
     throw new Error(
-      `Invalid COOP_ADDRESS: "${coopAddress}". Must be a 42-character hex address starting with 0x. Deploy the contract first.`
+      `Invalid COOP_ADDRESS: "${coopAddress}". Must be a 42-character hex address starting with 0x. Deploy NeuroCoop.sol to Filecoin ${network} first.`
     );
   }
 
@@ -26,13 +30,23 @@ export function createConfig(): Config {
     );
   }
 
+  const isMainnet = network === 'mainnet';
   return {
-    flowRpcUrl: process.env.FLOW_RPC_URL || 'https://testnet.evm.nodes.onflow.org',
-    flowChainId: parseInt(process.env.FLOW_CHAIN_ID || '545', 10),
+    filecoinRpcUrl: process.env.FILECOIN_RPC_URL || (
+      isMainnet
+        ? 'https://api.node.glif.io/rpc/v1'
+        : 'https://api.calibration.node.glif.io/rpc/v1'
+    ),
+    filecoinChainId: isMainnet ? 314 : 314159,
+    filecoinNetwork: network,
+    filecoinExplorerUrl: isMainnet
+      ? 'https://filfox.info/en/tx'
+      : 'https://calibration.filfox.info/en/tx',
     coopAddress: coopAddress as `0x${string}`,
     ownerPrivateKey: ownerPrivateKey as `0x${string}`,
     storachaEmail: process.env.STORACHA_EMAIL || '',
     port: Number(process.env.PORT ?? 3000),
+    veniceApiKey: process.env.VENICE_API_KEY || '',
   };
 }
 

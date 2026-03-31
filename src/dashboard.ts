@@ -196,7 +196,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   <p style="color:#444;font-size:0.65rem;text-align:center;margin-top:24px;">
     NeuroCoop — PL Genesis: Frontiers of Collaboration | Neurotech Track<br/>
     Aligned with: Neurorights Foundation, UNESCO 2025, Chile 2021, Colorado HB 24-1058, IEEE P7700<br/>
-    Contract: <a href="https://evm-testnet.flowscan.io/address/${contractAddress}" target="_blank">${contractAddress}</a>
+    Contract: <a href="https://calibration.filfox.info/en/address/${contractAddress}" target="_blank">${contractAddress}</a> on Filecoin Calibration
   </p>
 
   <script>
@@ -266,7 +266,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
         tb.innerHTML = d.events.reverse().map(e =>
           '<tr><td><span class="tag tag-active">' + e.type + '</span></td>' +
           '<td style="font-size:0.7rem;">' + JSON.stringify(e.data).slice(0,60) + '</td>' +
-          '<td><a href="https://evm-testnet.flowscan.io/tx/' + e.txHash + '" target="_blank">' + e.txHash.slice(0,10) + '...</a></td>' +
+          '<td><a href="https://calibration.filfox.info/en/tx/' + e.txHash + '" target="_blank">' + e.txHash.slice(0,10) + '...</a></td>' +
           '<td>' + new Date(e.timestamp).toLocaleTimeString() + '</td></tr>'
         ).join('');
       } catch(e) {}
