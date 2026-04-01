@@ -29,7 +29,7 @@ abstract contract ReentrancyGuard {
     }
 }
 
-/// @title NeuroCoop — Neural Data Cooperative Protocol
+/// @title NeuroCoop -- Neural Data Cooperative Protocol
 /// @notice Collective governance of neural data: members pool de-identified EEG data,
 ///         researchers propose studies, members vote on access.
 /// @dev Deployed on Filecoin FVM. Implements one-member-one-vote (cognitive equality).
@@ -101,7 +101,7 @@ contract NeuroCoop is ReentrancyGuard {
     uint256 public constant MAX_VOTING_PERIOD = 604800;
     uint256 public constant QUORUM_BPS = 5000;
 
-    // Tracks count of proposals in Active status — avoids O(n) scan in leaveCooperative
+    // Tracks count of proposals in Active status -- avoids O(n) scan in leaveCooperative
     uint256 public activeProposalCount;
 
     // --- Events ---
@@ -111,6 +111,7 @@ contract NeuroCoop is ReentrancyGuard {
     event VoteCast(uint256 indexed proposalId, address indexed voter, bool support, uint256 votesFor, uint256 votesAgainst);
     event ProposalExecuted(uint256 indexed proposalId, address indexed researcher, uint256 accessExpiresAt);
     event ProposalRejected(uint256 indexed proposalId);
+    event ProposalExpired(uint256 indexed proposalId);
     event VotingPeriodUpdated(uint256 oldPeriod, uint256 newPeriod);
 
     // --- Modifiers ---
@@ -164,10 +165,9 @@ contract NeuroCoop is ReentrancyGuard {
     }
 
     function leaveCooperative() external onlyMember nonReentrant {
-        // No O(n) scan — members may leave freely. Proposals snapshot totalVoters
-        // at creation time, so departures do not affect quorum calculation for
-        // proposals that were already submitted.
-        require(activeProposalCount == 0, "Cannot leave while proposals are active — vote first or wait for voting period to end");
+        // Members may leave at any time. Proposals snapshot totalVoters at creation,
+        // so departures do not affect quorum calculation for already-submitted proposals.
+        // Call expireProposal() on any stale proposals before or after leaving.
         members[msg.sender].active = false;
         memberCount--;
         emit MemberLeft(msg.sender, block.timestamp);
@@ -260,7 +260,7 @@ contract NeuroCoop is ReentrancyGuard {
 
     /**
      * Expire a proposal that has passed its voting deadline without being executed.
-     * Anyone can call this — it keeps activeProposalCount accurate without O(n) scans.
+     * Anyone can call this -- it keeps activeProposalCount accurate without O(n) scans.
      */
     function expireProposal(uint256 proposalId) external nonReentrant {
         require(proposalId < proposals.length, "Invalid proposal");
@@ -269,12 +269,12 @@ contract NeuroCoop is ReentrancyGuard {
         require(block.timestamp > p.deadline, "Voting period not ended");
         p.status = ProposalStatus.Expired;
         if (activeProposalCount > 0) activeProposalCount--;
-        emit ProposalRejected(proposalId); // reuse event for expired proposals
+        emit ProposalExpired(proposalId);
     }
 
     // --- Governance ---
 
-    function setVotingPeriod(uint256 _seconds) external onlyDeployer {
+    function setVotingPeriod(uint256 _seconds) external onlyMember {
         require(_seconds >= MIN_VOTING_PERIOD && _seconds <= MAX_VOTING_PERIOD, "Period out of bounds");
         uint256 oldPeriod = votingPeriod;
         votingPeriod = _seconds;

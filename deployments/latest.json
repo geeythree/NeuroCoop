@@ -1,5 +1,5 @@
 {
-  "address": "0x515084c576057fc42cd5d73146075026470a5795",
+  "address": "0x8dc6064ddaaaa7558e35381ee41c466bbcf8d2de",
   "abi": [
     {
       "inputs": [],
@@ -233,6 +233,19 @@
     },
     {
       "inputs": [],
+      "name": "activeProposalCount",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "deployer",
       "outputs": [
         {
@@ -253,6 +266,19 @@
         }
       ],
       "name": "executeProposal",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        }
+      ],
+      "name": "expireProposal",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -754,10 +780,10 @@
       "type": "function"
     }
   ],
-  "deployer": "0x95F2917F0a3d51bfF22DeE97dF822f25137a4991",
-  "blockNumber": 102825240,
-  "gasUsed": 2046082,
-  "txHash": "0x36839f7b1c4eebb8490e89dc0d0d0e03f277cd1ef43151107ba1237737300144",
-  "timestamp": "2026-03-31T21:12:36.373Z",
-  "network": "Flow EVM Testnet (545)"
+  "deployer": "0x96D5da03A0E308cEcEC7a44545E4F1f7dfa8ecEF",
+  "blockNumber": 3589742,
+  "gasUsed": 88269020,
+  "txHash": "0x4e079542ec85f96c876e0dc44f063f1ced5a40d2e82545dfcb2bba96ee5ca4d6",
+  "timestamp": "2026-04-01T04:44:37.914Z",
+  "network": "Filecoin Calibration (314159)"
 }
