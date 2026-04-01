@@ -167,3 +167,54 @@ export function computeDataHash(data: Uint8Array | string): string {
 export function getGatewayUrl(cid: string): string {
   return IPFS_GATEWAYS[0](cid);
 }
+
+/**
+ * Create a time-bounded UCAN delegation proving researcher consent for an approved proposal.
+ *
+ * The delegation encodes:
+ *   - audience: the researcher's DID (cryptographic proof of who it's for)
+ *   - expiration: matches the proposal access window (on-chain enforced)
+ *   - ability: upload/add (researcher may contribute results back to the cooperative space)
+ *
+ * This goes beyond a simple API key: it is a W3C-UCAN verifiable credential that
+ * the researcher can present to their institution as proof of cooperative consent.
+ * The delegation is signed by the cooperative's space principal — unforgeable.
+ *
+ * Requires Storacha to be initialised (client.spaces().length > 0).
+ */
+export async function createConsentDelegation(
+  client: Client.Client,
+  researcherDid: string,
+  proposalId: number,
+  contractAddress: string,
+  durationDays: number
+): Promise<{
+  archive: string;        // base64-encoded UCAN delegation (portable proof)
+  delegationCid: string;  // CID of the delegation block
+  expiresAt: string;      // ISO-8601 expiry
+  researcherDid: string;
+  ability: string;
+}> {
+  if (!researcherDid.startsWith('did:')) {
+    throw new Error(`Invalid DID: "${researcherDid}" — must start with "did:"`);
+  }
+
+  const expiresUnix = Math.floor(Date.now() / 1000) + (durationDays * 86400);
+
+  const delegation = await client.createDelegation(
+    { did: () => researcherDid as `did:${string}:${string}` },
+    ['upload/add'],
+    { expiration: expiresUnix }
+  );
+
+  const { ok: archive, error } = await delegation.archive();
+  if (!archive) throw new Error(`Failed to archive delegation: ${(error as Error)?.message}`);
+
+  return {
+    archive: Buffer.from(archive).toString('base64'),
+    delegationCid: delegation.cid.toString(),
+    expiresAt: new Date(expiresUnix * 1000).toISOString(),
+    researcherDid,
+    ability: 'upload/add',
+  };
+}

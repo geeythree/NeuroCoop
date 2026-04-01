@@ -73,7 +73,7 @@ async function callVenice(apiKey: string, systemPrompt: string, userPrompt: stri
       ],
       max_tokens: 900,
       temperature: 0.15,
-      venice_parameters: { enable_web_search: false, include_venice_system_prompt: false },
+      venice_parameters: { enable_web_search: 'off', include_venice_system_prompt: false },
     }),
   });
 
