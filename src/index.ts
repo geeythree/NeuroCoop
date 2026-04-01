@@ -16,6 +16,19 @@ import { DataCategory, PROPOSAL_STATUS_LABELS } from './types.js';
 import type { EncryptedUpload, ConsentReceipt } from './types.js';
 import { analyzeProposal, generateNeuralInsights, assessGovernanceHealth } from './cognition.js';
 
+/** Extract clean revert reason from viem ContractFunctionExecutionError */
+function cleanError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  // Extract contract revert reason
+  const revert = msg.match(/reverted with the following reason:\s*(.+?)(?:\n|Contract Call)/s);
+  if (revert) return revert[1].trim();
+  // Extract from Error(reason) format
+  const reason = msg.match(/Error\(([^)]+)\)/);
+  if (reason) return reason[1];
+  // Truncate long messages
+  return msg.length > 300 ? msg.slice(0, 300) + '...' : msg;
+}
+
 /** Structured error response helper */
 function errorResponse(message: string, details?: Record<string, unknown>) {
   return { success: false, error: message, ...details };
@@ -292,7 +305,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -348,7 +361,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -397,7 +410,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -473,7 +486,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -606,7 +619,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -691,7 +704,7 @@ async function main() {
       return { signature, message };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -725,7 +738,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -864,7 +877,7 @@ async function main() {
         };
       } catch (err) {
         reply.code(500);
-        return errorResponse(err instanceof Error ? err.message : String(err));
+        return errorResponse(cleanError(err));
       }
     }
   );
@@ -918,7 +931,7 @@ async function main() {
         };
       } catch (err) {
         reply.code(500);
-        return errorResponse(err instanceof Error ? err.message : String(err));
+        return errorResponse(cleanError(err));
       }
     }
   );
@@ -1006,7 +1019,7 @@ async function main() {
         };
       } catch (err) {
         reply.code(500);
-        return errorResponse(err instanceof Error ? err.message : String(err));
+        return errorResponse(cleanError(err));
       }
     }
   );
@@ -1050,7 +1063,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -1148,7 +1161,7 @@ async function main() {
       };
     } catch (err) {
       reply.code(500);
-      return errorResponse(err instanceof Error ? err.message : String(err));
+      return errorResponse(cleanError(err));
     }
   });
 
@@ -1187,7 +1200,7 @@ async function main() {
         };
       } catch (err) {
         reply.code(500);
-        return errorResponse(err instanceof Error ? err.message : String(err));
+        return errorResponse(cleanError(err));
       }
     }
   );

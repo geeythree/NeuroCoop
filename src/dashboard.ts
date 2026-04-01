@@ -262,7 +262,20 @@ const SL = ['Voting Open','Rejected','Access Granted','Expired'];
 const SC = ['status-active','status-rejected','status-approved','status-rejected'];
 
 function fmtAddr(a) { return a ? a.slice(0,6)+'...'+a.slice(-4) : '?'; }
-function fmtErr(d) { if (typeof d === 'string') return d; if (d?.error) return d.error.split('\\n')[0].replace(/^.*reason:|Details:.*$/g,'').trim() || d.error; return JSON.stringify(d); }
+function fmtErr(d) {
+  if (typeof d === 'string') return d;
+  let msg = d?.error || d?.message || JSON.stringify(d);
+  // Extract contract revert reason from viem errors
+  const revert = msg.match(/reverted with the following reason:\\s*(.+?)\\s*(?:\\n|Contract Call|$)/);
+  if (revert) return revert[1];
+  const reason = msg.match(/revert reason=\\[Error\\(([^)]+)\\)\\]/);
+  if (reason) return reason[1];
+  const simple = msg.match(/Error\\(([^)]+)\\)/);
+  if (simple) return simple[1];
+  // Trim long messages
+  if (msg.length > 200) msg = msg.slice(0, 200) + '...';
+  return msg;
+}
 
 function showResp(id, data, ok) {
   const el = document.getElementById(id);
