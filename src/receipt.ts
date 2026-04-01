@@ -10,6 +10,7 @@ export function generateCoopReceipt(params: {
   executionTxHash: string;
   storachaCid: string;
   contractAddress: string;
+  explorerBaseUrl?: string;
 }): ConsentReceipt {
   const { proposal } = params;
   const expiresIso = proposal.accessExpiresAt > 0
@@ -47,7 +48,7 @@ export function generateCoopReceipt(params: {
     proofs: {
       executionTxHash: params.executionTxHash,
       storachaCid: params.storachaCid,
-      filecoinExplorerUrl: `https://calibration.filfox.info/en/tx/${params.executionTxHash}`,
+      filecoinExplorerUrl: `${params.explorerBaseUrl ?? 'https://calibration.filfox.info/en/tx'}/${params.executionTxHash}`,
     },
     framework: {
       neurorights: [

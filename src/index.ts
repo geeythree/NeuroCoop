@@ -27,11 +27,6 @@ async function main() {
     console.error('OWNER_PRIVATE_KEY is required');
     process.exit(1);
   }
-  if (!config.coopAddress) {
-    console.error('COOP_ADDRESS is required — deploy NeuroCoop.sol first');
-    process.exit(1);
-  }
-
   // --- Initialize ---
   console.log('=== NeuroCoop ===');
   console.log('Neural Data Cooperative Protocol');
@@ -50,9 +45,8 @@ async function main() {
         success: false,
         error: 'Contract not yet deployed',
         setup: `Deploy NeuroCoop.sol to Filecoin ${config.filecoinNetwork} (Chain ID ${config.filecoinChainId}), then set COOP_ADDRESS in Railway variables.`,
-        faucet: 'https://faucet.calibnet.chainsafe-fil.io/',
+        faucet: config.filecoinNetwork === 'calibration' ? 'https://faucet.calibnet.chainsafe-fil.io/' : undefined,
         deployVia: 'https://remix.ethereum.org',
-        walletAddress: '0x96D5da03A0E308cEcEC7a44545E4F1f7dfa8ecEF',
       });
       return false;
     }
@@ -285,7 +279,7 @@ async function main() {
         success: true,
         member: memberAddress,
         dataId, storachaCid, dataHash, txHash,
-        explorerUrl: `https://calibration.filfox.info/en/tx/${txHash}`,
+        explorerUrl: `${config.filecoinExplorerUrl}/${txHash}`,
         metadata: { channels: metadata.channels, channelCount: metadata.channelCount, sampleRate: metadata.sampleRate },
         deidentification: shouldDeidentify ? { modifications, epsilon: req.body.noiseEpsilon || 1.0 } : null,
         summary,
@@ -343,7 +337,7 @@ async function main() {
         purpose, description, durationDays,
         categories: categories.map(c => ({ id: c, label: ['Raw EEG', 'Processed Features', 'ML Inferences', 'Metadata'][c] })),
         txHash,
-        explorerUrl: `https://calibration.filfox.info/en/tx/${txHash}`,
+        explorerUrl: `${config.filecoinExplorerUrl}/${txHash}`,
         message: 'Proposal submitted. Cooperative members can now vote.',
       };
     } catch (err) {
@@ -393,7 +387,7 @@ async function main() {
         support,
         currentTally: { for: proposal.votesFor, against: proposal.votesAgainst },
         txHash,
-        explorerUrl: `https://calibration.filfox.info/en/tx/${txHash}`,
+        explorerUrl: `${config.filecoinExplorerUrl}/${txHash}`,
       };
     } catch (err) {
       reply.code(500);
@@ -442,6 +436,7 @@ async function main() {
           executionTxHash: txHash,
           storachaCid: '',
           contractAddress: config.coopAddress,
+          explorerBaseUrl: config.filecoinExplorerUrl,
         });
 
         if (storachaClient) {
@@ -467,7 +462,7 @@ async function main() {
           ? new Date(proposal.accessExpiresAt * 1000).toISOString()
           : null,
         txHash,
-        explorerUrl: `https://calibration.filfox.info/en/tx/${txHash}`,
+        explorerUrl: `${config.filecoinExplorerUrl}/${txHash}`,
         receipt,
       };
     } catch (err) {

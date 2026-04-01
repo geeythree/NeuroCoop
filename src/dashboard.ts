@@ -20,7 +20,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
     .track { color: #666; font-size: 0.75rem; margin-bottom: 24px; font-style: italic; }
     .badges { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
     .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; font-weight: bold; }
-    .badge-flow { background: #00ef8b22; color: #00ef8b; border: 1px solid #00ef8b44; }
+    .badge-filecoin { background: #0090ff22; color: #0090ff; border: 1px solid #0090ff44; }
     .badge-storacha { background: #f5932022; color: #f59320; border: 1px solid #f5932044; }
     .badge-neuro { background: #ec489922; color: #ec4899; border: 1px solid #ec489944; }
     .badge-coop { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
@@ -86,7 +86,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   <div class="badges">
     <span class="badge badge-neuro">Neurotech</span>
     <span class="badge badge-coop">Cooperative</span>
-    <span class="badge badge-flow">Flow EVM</span>
+    <span class="badge badge-filecoin">Filecoin FVM</span>
     <span class="badge badge-storacha">Storacha</span>
     <span class="badge badge-ethics">Neurorights</span>
   </div>

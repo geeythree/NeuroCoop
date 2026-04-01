@@ -6,33 +6,64 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const flowTestnet: Chain = {
-  id: 545,
-  name: 'Flow EVM Testnet',
-  nativeCurrency: { name: 'Flow', symbol: 'FLOW', decimals: 18 },
-  rpcUrls: { default: { http: ['https://testnet.evm.nodes.onflow.org'] } },
-  blockExplorers: { default: { name: 'FlowScan', url: 'https://evm-testnet.flowscan.io' } },
+const filecoinCalibration: Chain = {
+  id: 314159,
+  name: 'Filecoin Calibration',
+  nativeCurrency: { name: 'testnet filecoin', symbol: 'tFIL', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://api.calibration.node.glif.io/rpc/v1'] },
+    public:  { http: ['https://api.calibration.node.glif.io/rpc/v1'] },
+  },
+  blockExplorers: {
+    default: { name: 'Filfox', url: 'https://calibration.filfox.info' },
+  },
+};
+
+const filecoinMainnet: Chain = {
+  id: 314,
+  name: 'Filecoin',
+  nativeCurrency: { name: 'filecoin', symbol: 'FIL', decimals: 18 },
+  rpcUrls: {
+    default: { http: ['https://api.node.glif.io/rpc/v1'] },
+    public:  { http: ['https://api.node.glif.io/rpc/v1'] },
+  },
+  blockExplorers: {
+    default: { name: 'Filfox', url: 'https://filfox.info' },
+  },
 };
 
 async function main() {
   const privateKey = process.env.OWNER_PRIVATE_KEY;
-  if (!privateKey) {
-    console.error('Set OWNER_PRIVATE_KEY in .env');
+  if (!privateKey || !privateKey.startsWith('0x') || privateKey.length !== 66) {
+    console.error('Set OWNER_PRIVATE_KEY in .env (66-char hex string starting with 0x)');
     process.exit(1);
   }
 
+  const network = (process.env.FILECOIN_NETWORK || 'calibration') as 'calibration' | 'mainnet';
+  const chain = network === 'mainnet' ? filecoinMainnet : filecoinCalibration;
+  const explorerBase = network === 'mainnet'
+    ? 'https://filfox.info/en'
+    : 'https://calibration.filfox.info/en';
+  const faucet = 'https://faucet.calibnet.chainsafe-fil.io/';
+
+  console.log(`Deploying to: ${chain.name} (Chain ID ${chain.id})`);
+
   const account = privateKeyToAccount(privateKey as `0x${string}`);
   console.log(`Deployer: ${account.address}`);
+  if (network === 'calibration') {
+    console.log(`Fund at faucet if needed: ${faucet}`);
+  }
 
-  const publicClient = createPublicClient({ chain: flowTestnet, transport: http() });
-  const walletClient = createWalletClient({ account, chain: flowTestnet, transport: http() });
+  const rpcUrl = process.env.FILECOIN_RPC_URL || chain.rpcUrls.default.http[0];
+  const publicClient = createPublicClient({ chain, transport: http(rpcUrl) });
+  const walletClient = createWalletClient({ account, chain, transport: http(rpcUrl) });
 
   const balance = await publicClient.getBalance({ address: account.address });
-  console.log(`Balance: ${Number(balance) / 1e18} FLOW`);
+  console.log(`Balance: ${Number(balance) / 1e18} ${chain.nativeCurrency.symbol}`);
 
   if (balance === 0n) {
-    console.error('No FLOW balance! Fund this address: ' + account.address);
-    console.error('Faucet: https://faucet.flow.com/');
+    console.error(`No balance! Fund this address: ${account.address}`);
+    if (network === 'calibration') console.error(`Faucet: ${faucet}`);
     process.exit(1);
   }
 
@@ -67,14 +98,14 @@ async function main() {
   console.log(`Compiled. Bytecode: ${bytecode.length} chars, ABI: ${abi.length} entries`);
 
   // Deploy
-  console.log('\nDeploying to Flow EVM Testnet...');
+  console.log(`\nDeploying to ${chain.name}...`);
   const hash = await walletClient.deployContract({
     abi,
     bytecode: bytecode as `0x${string}`,
   });
 
   console.log(`Tx hash: ${hash}`);
-  console.log(`Explorer: https://evm-testnet.flowscan.io/tx/${hash}`);
+  console.log(`Explorer: ${explorerBase}/tx/${hash}`);
 
   console.log('\nWaiting for confirmation...');
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -83,9 +114,8 @@ async function main() {
   console.log(`Address: ${receipt.contractAddress}`);
   console.log(`Block: ${receipt.blockNumber}`);
   console.log(`Gas used: ${receipt.gasUsed}`);
-  console.log(`Explorer: https://evm-testnet.flowscan.io/address/${receipt.contractAddress}`);
+  console.log(`Explorer: ${explorerBase}/address/${receipt.contractAddress}`);
 
-  // Write deployment output to file
   const deploymentOutput = {
     address: receipt.contractAddress,
     abi,
@@ -94,13 +124,10 @@ async function main() {
     gasUsed: Number(receipt.gasUsed),
     txHash: hash,
     timestamp: new Date().toISOString(),
-    network: 'Flow EVM Testnet (545)',
+    network: `${chain.name} (${chain.id})`,
   };
   mkdirSync('./deployments', { recursive: true });
-  writeFileSync(
-    './deployments/latest.json',
-    JSON.stringify(deploymentOutput, null, 2)
-  );
+  writeFileSync('./deployments/latest.json', JSON.stringify(deploymentOutput, null, 2));
   console.log(`\nDeployment output written to deployments/latest.json`);
 
   console.log(`\nAdd to your .env:`);

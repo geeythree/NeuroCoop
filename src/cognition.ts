@@ -55,8 +55,8 @@ export interface GovernanceHealth {
   warnings: string[];
 }
 
-const VENICE_BASE_URL = 'https://api.venice.ai/api/v1';
-const MODEL = 'llama-3.3-70b';
+const VENICE_BASE_URL = process.env.VENICE_BASE_URL ?? 'https://api.venice.ai/api/v1';
+const MODEL = process.env.VENICE_MODEL ?? 'llama-3.3-70b';
 
 async function callVenice(apiKey: string, systemPrompt: string, userPrompt: string): Promise<string> {
   const resp = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
