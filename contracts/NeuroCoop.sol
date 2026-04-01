@@ -274,7 +274,7 @@ contract NeuroCoop is ReentrancyGuard {
 
     // --- Governance ---
 
-    function setVotingPeriod(uint256 _seconds) external onlyMember {
+    function setVotingPeriod(uint256 _seconds) external onlyDeployer {
         require(_seconds >= MIN_VOTING_PERIOD && _seconds <= MAX_VOTING_PERIOD, "Period out of bounds");
         uint256 oldPeriod = votingPeriod;
         votingPeriod = _seconds;

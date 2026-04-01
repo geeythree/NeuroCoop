@@ -115,6 +115,13 @@ export const NEUROCOOP_ABI = [
     inputs: [{ name: '_seconds', type: 'uint256' }],
     outputs: [],
   },
+  {
+    name: 'expireProposal',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'proposalId', type: 'uint256' }],
+    outputs: [],
+  },
   // --- View Functions ---
   {
     name: 'hasAccess',
@@ -128,6 +135,13 @@ export const NEUROCOOP_ABI = [
   },
   {
     name: 'memberCount',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+  {
+    name: 'activeProposalCount',
     type: 'function',
     stateMutability: 'view',
     inputs: [],
@@ -249,6 +263,13 @@ export const NEUROCOOP_ABI = [
   },
   {
     name: 'ProposalRejected',
+    type: 'event',
+    inputs: [
+      { name: 'proposalId', type: 'uint256', indexed: true },
+    ],
+  },
+  {
+    name: 'ProposalExpired',
     type: 'event',
     inputs: [
       { name: 'proposalId', type: 'uint256', indexed: true },

@@ -1,5 +1,5 @@
 {
-  "address": "0x8dc6064ddaaaa7558e35381ee41c466bbcf8d2de",
+  "address": "0x95cdb710677d855159b77e81d6d386ae83f05dab",
   "abi": [
     {
       "inputs": [],
@@ -121,6 +121,19 @@
         }
       ],
       "name": "ProposalExecuted",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "proposalId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ProposalExpired",
       "type": "event"
     },
     {
@@ -781,9 +794,9 @@
     }
   ],
   "deployer": "0x96D5da03A0E308cEcEC7a44545E4F1f7dfa8ecEF",
-  "blockNumber": 3589742,
-  "gasUsed": 88269020,
-  "txHash": "0x4e079542ec85f96c876e0dc44f063f1ced5a40d2e82545dfcb2bba96ee5ca4d6",
-  "timestamp": "2026-04-01T04:44:37.914Z",
+  "blockNumber": 3589831,
+  "gasUsed": 87711144,
+  "txHash": "0x0cdcacfa89ad442ac71e5ce14f8dcdfdc89a5e43f327dfbbe2730eb6a02f6b26",
+  "timestamp": "2026-04-01T05:29:06.806Z",
   "network": "Filecoin Calibration (314159)"
 }

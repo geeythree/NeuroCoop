@@ -204,6 +204,27 @@ export class CoopClient {
     return hash;
   }
 
+  async expireProposal(callerAddress: string, proposalId: number): Promise<string> {
+    const wallet = this.getWallet(callerAddress);
+    const hash = await wallet.writeContract({
+      address: this.coopAddress,
+      abi: NEUROCOOP_ABI,
+      functionName: 'expireProposal',
+      args: [BigInt(proposalId)],
+      chain: this.chain,
+    });
+    await this.publicClient.waitForTransactionReceipt({ hash });
+    console.log(`[coop] Proposal #${proposalId} expired, tx: ${hash}`);
+    this.events.push({
+      type: 'ProposalRejected',
+      data: { proposalId, reason: 'expired' },
+      timestamp: Date.now(),
+      txHash: hash,
+      blockNumber: 0,
+    });
+    return hash;
+  }
+
   async setVotingPeriod(callerAddress: string, seconds: number): Promise<string> {
     const wallet = this.getWallet(callerAddress);
     const hash = await wallet.writeContract({

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseEegMetadata, deidentifyEeg, generateDataSummary } from '../eeg.js';
+import { readFileSync, existsSync } from 'fs';
+import { parseEegMetadata, deidentifyEeg, generateDataSummary, parseEdf, extractBandPowerFromEdf } from '../eeg.js';
 
 const SAMPLE_CSV = [
   'timestamp,channel_fp1,channel_fp2,channel_c3,channel_c4,channel_o1,channel_o2,label',
@@ -199,5 +200,58 @@ describe('generateDataSummary', () => {
     ].join('\n');
     const summary = generateDataSummary(noLabelCsv);
     expect(summary.labels).toEqual([]);
+  });
+});
+
+describe('EDF parser', () => {
+  const edfPath = 'sample-data/S001R01.edf';
+  const hasEdf = existsSync(edfPath);
+
+  it.skipIf(!hasEdf)('parses PhysioNet EDF header correctly', () => {
+    const buf = readFileSync(edfPath);
+    const edf = parseEdf(buf);
+
+    expect(edf.header.version).toBe('0');
+    expect(edf.header.numSignals).toBe(65); // 64 EEG + 1 annotation
+    expect(edf.header.numDataRecords).toBe(61);
+    expect(edf.header.dataRecordDuration).toBe(1);
+    expect(edf.labels.length).toBe(64); // annotation channel excluded
+    expect(edf.sampleRate).toBe(160);
+    expect(edf.duration).toBe(61);
+    expect(edf.totalSamples).toBe(9760); // 61 records * 160 samples
+  });
+
+  it.skipIf(!hasEdf)('extracts valid channel data (physical values in uV range)', () => {
+    const buf = readFileSync(edfPath);
+    const edf = parseEdf(buf);
+
+    // Channel 0 should have real EEG values (typically -200 to +200 uV)
+    const ch0 = edf.channels[0];
+    expect(ch0.length).toBe(9760);
+
+    const min = Math.min(...Array.from(ch0.subarray(0, 100)));
+    const max = Math.max(...Array.from(ch0.subarray(0, 100)));
+    expect(min).toBeGreaterThan(-10000); // reasonable EEG range
+    expect(max).toBeLessThan(10000);
+    expect(max).not.toBe(min); // not all zeros
+  });
+
+  it.skipIf(!hasEdf)('extracts band power from real EEG', () => {
+    const buf = readFileSync(edfPath);
+    const edf = parseEdf(buf);
+    const bands = extractBandPowerFromEdf(edf);
+
+    expect(bands.sampleRate).toBe(160);
+    expect(bands.channelsAnalysed).toBeGreaterThan(0);
+    expect(bands.channelsAnalysed).toBeLessThanOrEqual(16);
+    expect(bands.delta).toBeGreaterThan(0);
+    expect(bands.theta).toBeGreaterThan(0);
+    expect(bands.alpha).toBeGreaterThan(0);
+    expect(bands.beta).toBeGreaterThan(0);
+    expect(bands.gamma).toBeGreaterThan(0);
+    // Delta should be >= gamma (typical for resting-state EEG)
+    expect(bands.delta).toBeGreaterThanOrEqual(bands.gamma);
+    expect(['delta', 'theta', 'alpha', 'beta', 'gamma']).toContain(bands.dominantBand);
+    expect(bands.interpretation.length).toBeGreaterThan(10);
   });
 });

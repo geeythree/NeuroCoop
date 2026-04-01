@@ -1,9 +1,10 @@
 import Fastify, { type FastifyRequest, type FastifyReply } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { readFileSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { privateKeyToAccount } from 'viem/accounts';
-import { createConfig } from './config.js';
+import { createConfig, NEUROCOOP_ABI } from './config.js';
 import { CoopClient } from './coop.js';
 import { getPublicKey, encryptNeuroData, decryptNeuroData, createAccessChallenge, verifyAccessSignature, signAccessChallenge } from './crypto.js';
 import { Store } from './db.js';
@@ -151,6 +152,11 @@ async function main() {
   // --- Server ---
   const server = Fastify({ logger: true, bodyLimit: 2_097_152 });
   await server.register(cors, { origin: true, credentials: true });
+  await server.register(rateLimit, {
+    max: 60,          // 60 requests per window
+    timeWindow: 60000, // 1 minute
+    allowList: ['127.0.0.1', '::1'],
+  });
 
   server.get('/', async (_req, reply) => {
     reply.type('text/html').send(getDashboardHtml(config.coopAddress, ownerAddress));
@@ -658,6 +664,38 @@ async function main() {
   });
 
   /**
+   * POST /sign-challenge — Dashboard signing helper.
+   * The browser dashboard cannot import ethers/viem, so this endpoint signs a
+   * challenge message server-side. The private key is used only to compute the
+   * signature and is never stored. Production clients should sign locally.
+   */
+  server.post<{ Body: { privateKey: string; message: string } }>('/sign-challenge', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['privateKey', 'message'],
+        properties: {
+          privateKey: { type: 'string' },
+          message:    { type: 'string' },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    try {
+      const { privateKey, message } = req.body;
+      if (!privateKey?.startsWith('0x') || privateKey.length !== 66) {
+        reply.code(400);
+        return errorResponse('privateKey must be a 66-char hex string starting with 0x');
+      }
+      const signature = signAccessChallenge(privateKey, message);
+      return { signature, message };
+    } catch (err) {
+      reply.code(500);
+      return errorResponse(err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  /**
    * POST /wallet/register — One-time wallet registration.
    * After this, use GET /auth/nonce/:address + signature for all subsequent calls.
    * The private key is stored server-side (in SQLite) and never needs to be transmitted again.
@@ -1153,6 +1191,258 @@ async function main() {
       }
     }
   );
+
+  /**
+   * POST /demo/run — Server-side full lifecycle demo.
+   *
+   * Runs the complete NeuroCoop lifecycle against the live Filecoin FVM contract:
+   *   1. EEG signal processing + de-identification
+   *   2. Three members join the cooperative (skips if already joined)
+   *   3. Researcher submits a proposal
+   *   4. AI ethics pre-screening via Venice
+   *   5. All members vote
+   *   6. Proposal executed — consent receipt generated
+   *
+   * Uses testnet-only demo wallets. Requires tFIL at the faucet:
+   *   https://faucet.calibnet.chainsafe-fil.io/
+   *
+   * Idempotent: already-joined members and already-voted members are skipped
+   * gracefully so repeated runs continue from where they left off.
+   */
+  server.post('/demo/run', async (_req, reply) => {
+    if (!requireContract(reply)) return;
+
+    const DEMO_KEYS = {
+      memberA:    (process.env.MEMBER_A_KEY    || config.ownerPrivateKey) as `0x${string}`,
+      memberB:    (process.env.MEMBER_B_KEY    || '0x7016002340be3593ea4a526b0c7fbe269676ac342cb8284a8d6fda25c6e292e0') as `0x${string}`,
+      memberC:    (process.env.MEMBER_C_KEY    || '0x7096129d010cb538ed827abad1931480a9b3d02af1a907ccc483e136440ceafe') as `0x${string}`,
+      researcher: (process.env.RESEARCHER_KEY  || '0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8') as `0x${string}`,
+    };
+
+    // Register all demo wallets with the CoopClient
+    const addrA = coop!.registerWallet(DEMO_KEYS.memberA);
+    const addrB = coop!.registerWallet(DEMO_KEYS.memberB);
+    const addrC = coop!.registerWallet(DEMO_KEYS.memberC);
+    const addrR = coop!.registerWallet(DEMO_KEYS.researcher);
+
+    type StepStatus = 'ok' | 'skipped' | 'error';
+    interface Step {
+      step: number;
+      name: string;
+      status: StepStatus;
+      detail: string;
+      txHash?: string;
+      explorerUrl?: string;
+    }
+
+    const steps: Step[] = [];
+    let nextStep = 1;
+    const explorerBase = config.filecoinExplorerUrl;
+
+    function addStep(name: string, status: StepStatus, detail: string, txHash?: string): Step {
+      const s: Step = {
+        step: nextStep++, name, status, detail,
+        txHash,
+        explorerUrl: txHash ? `${explorerBase}/${txHash}` : undefined,
+      };
+      steps.push(s);
+      return s;
+    }
+
+    try {
+      // ── Step 1: EEG processing ────────────────────────────────────────────
+      const rawEeg = readFileSync(new URL('../sample-data/sample-eeg.csv', import.meta.url), 'utf-8');
+      const meta = parseEegMetadata(rawEeg);
+      const { data: deidData, modifications } = deidentifyEeg(rawEeg, { addNoise: true, noiseEpsilon: 1.0 });
+      const bands = extractBandPower(rawEeg);
+
+      addStep('EEG Processing', 'ok',
+        `${meta.channelCount}ch · ${meta.sampleRate}Hz · ${meta.duration.toFixed(1)}s | ` +
+        `Bands: δ=${bands.delta} θ=${bands.theta} α=${bands.alpha} β=${bands.beta} γ=${bands.gamma} μV RMS | ` +
+        `Dominant: ${bands.dominantBand.toUpperCase()} | ` +
+        modifications.join('; ')
+      );
+
+      // ── Steps 2–4: Members join ───────────────────────────────────────────
+      const memberDefs = [
+        { name: 'Member A Joins', address: addrA, key: DEMO_KEYS.memberA },
+        { name: 'Member B Joins', address: addrB, key: DEMO_KEYS.memberB },
+        { name: 'Member C Joins', address: addrC, key: DEMO_KEYS.memberC },
+      ];
+
+      for (const m of memberDefs) {
+        try {
+          const existing = await coop!.getMember(m.address);
+          if (existing) {
+            addStep(m.name, 'skipped', `Already a member (${m.address.slice(0, 12)}…)`);
+            continue;
+          }
+
+          const pubKey = getPublicKey(m.key);
+          const { encrypted } = await encryptNeuroData(pubKey, deidData);
+          const dataHash = computeDataHash(new TextEncoder().encode(deidData + m.address));
+          const timestamp = Math.floor(Date.now() / 1000);
+          const dataId = coop!.generateDataId(m.address, 'sample-eeg.csv', timestamp);
+
+          let storachaCid: string;
+          if (storachaClient) {
+            try {
+              storachaCid = await uploadEncrypted(storachaClient, new TextEncoder().encode(encrypted), 'sample-eeg.csv');
+            } catch {
+              storachaCid = `local:${dataHash.slice(0, 16)}`;
+            }
+          } else {
+            storachaCid = `local:${dataHash.slice(0, 16)}`;
+          }
+
+          const txHash = await coop!.joinCooperative(m.address, dataId, storachaCid, dataHash, meta.channelCount, meta.sampleRate, true);
+          store.saveUpload({ dataId, storachaCid, dataHash, txHash, owner: m.address, filename: 'sample-eeg.csv', channelCount: meta.channelCount, sampleRate: meta.sampleRate, deidentified: true, timestamp });
+          store.saveEncrypted(m.address, encrypted);
+          store.saveWallet(m.address, m.key);
+          store.logAudit({ actor: m.address, action: 'JOIN_COOPERATIVE', target: dataId, txHash });
+
+          addStep(m.name, 'ok', `${m.address.slice(0, 12)}… joined · CID: ${storachaCid.slice(0, 20)}…`, txHash);
+        } catch (err: any) {
+          if (err?.message?.includes('Already a member')) {
+            addStep(m.name, 'skipped', `Already a member (${m.address.slice(0, 12)}…)`);
+          } else {
+            addStep(m.name, 'error', err?.message || String(err));
+          }
+        }
+      }
+
+      // ── Step 5: AI ethics pre-screening ──────────────────────────────────
+      const proposalPurpose     = 'seizure-detection-validation';
+      const proposalDescription = 'Validate a seizure-detection ML model against de-identified EEG from cooperative members. No re-identification attempted. Results published open-access under CC-BY 4.0.';
+      const proposalDays        = 30;
+      const proposalCategories  = [1, 2]; // Processed Features + ML Inferences
+
+      if (config.veniceApiKey) {
+        try {
+          const analysis = await analyzeProposal(config.veniceApiKey, {
+            purpose: proposalPurpose, description: proposalDescription,
+            durationDays: proposalDays, categories: ['Processed Features', 'ML Inferences'],
+            researcher: addrR,
+          });
+          addStep('AI Ethics Screening', 'ok',
+            `Score: ${analysis.ethicsScore}/100 · Risk: ${analysis.riskLevel.toUpperCase()} · Recommendation: ${analysis.recommendation.toUpperCase()} | ${analysis.reasoning}`
+          );
+        } catch (err: any) {
+          addStep('AI Ethics Screening', 'error', err?.message || 'Venice AI unavailable');
+        }
+      } else {
+        addStep('AI Ethics Screening', 'skipped', 'VENICE_API_KEY not set — set it in Railway env vars to enable');
+      }
+
+      // ── Step 6: Submit proposal ───────────────────────────────────────────
+      let proposalId: number;
+      try {
+        const result = await coop!.submitProposal(addrR, proposalPurpose, proposalDescription, proposalDays, proposalCategories);
+        proposalId = result.proposalId;
+        addStep('Submit Proposal', 'ok', `Proposal #${proposalId}: "${proposalPurpose}"`, result.txHash);
+      } catch (err: any) {
+        // Use the latest existing proposal if submission fails
+        const count = await coop!.getProposalCount();
+        proposalId = Math.max(0, count - 1);
+        addStep('Submit Proposal', count > 0 ? 'skipped' : 'error',
+          count > 0
+            ? `Using existing proposal #${proposalId} (${err?.message?.slice(0, 60)})`
+            : (err?.message || String(err))
+        );
+      }
+
+      // ── Steps 7–9: Members vote ───────────────────────────────────────────
+      for (const m of [
+        { name: 'Member A Votes', address: addrA },
+        { name: 'Member B Votes', address: addrB },
+        { name: 'Member C Votes', address: addrC },
+      ]) {
+        try {
+          const hasVotedAlready = await coop!.publicClient.readContract({
+            address: config.coopAddress as `0x${string}`,
+            abi: NEUROCOOP_ABI,
+            functionName: 'hasVoted',
+            args: [BigInt(proposalId), m.address as `0x${string}`],
+          }) as boolean;
+
+          if (hasVotedAlready) {
+            addStep(m.name, 'skipped', `Already voted on proposal #${proposalId}`);
+            continue;
+          }
+
+          const txHash = await coop!.vote(m.address, proposalId, true);
+          addStep(m.name, 'ok', `Voted FOR proposal #${proposalId}`, txHash);
+        } catch (err: any) {
+          if (err?.message?.includes('Already voted')) {
+            addStep(m.name, 'skipped', `Already voted on proposal #${proposalId}`);
+          } else {
+            addStep(m.name, 'error', err?.message || String(err));
+          }
+        }
+      }
+
+      // ── Step 10: Execute ──────────────────────────────────────────────────
+      let outcome = 'unknown';
+      let receipt = null;
+      try {
+        const txHash = await coop!.executeProposal(addrA, proposalId);
+        const proposal = await coop!.getProposal(proposalId);
+        const approved = proposal.status === 2;
+        outcome = approved ? 'APPROVED' : 'REJECTED';
+
+        if (approved) {
+          receipt = generateCoopReceipt({
+            proposal,
+            executionTxHash: txHash,
+            storachaCid: '',
+            contractAddress: config.coopAddress,
+            explorerBaseUrl: explorerBase,
+          });
+          store.saveReceipt(proposalId, receipt);
+          store.logAudit({ actor: addrR, action: 'PROPOSAL_APPROVED', target: `proposal:${proposalId}`, txHash });
+        }
+
+        addStep('Execute Proposal', 'ok',
+          `Outcome: ${outcome} · Votes: ${proposal.votesFor} for, ${proposal.votesAgainst} against, of ${proposal.totalVoters} members`,
+          txHash
+        );
+      } catch (err: any) {
+        if (err?.message?.includes('Not active')) {
+          const proposal = await coop!.getProposal(proposalId).catch(() => null);
+          outcome = proposal ? ['Active','Rejected','Approved','Expired'][proposal.status] : 'unknown';
+          addStep('Execute Proposal', 'skipped', `Proposal #${proposalId} already finalised (${outcome})`);
+        } else {
+          addStep('Execute Proposal', 'error', err?.message || String(err));
+        }
+      }
+
+      const memberCount   = await coop!.getMemberCount();
+      const proposalCount = await coop!.getProposalCount();
+
+      return {
+        success: true,
+        steps,
+        summary: {
+          members: memberCount,
+          proposals: proposalCount,
+          proposalId,
+          outcome,
+          contract: config.coopAddress,
+          contractExplorer: `${explorerBase.replace('/tx', '/address')}/${config.coopAddress}`,
+          receipt: receipt ?? undefined,
+        },
+        stack: {
+          governance: `Filecoin FVM — Calibration (chain 314159)`,
+          storage:    storachaClient ? 'Storacha (IPFS/Filecoin)' : 'local SQLite (Storacha auth required)',
+          encryption: 'ECIES secp256k1 + AES-256-CBC',
+          ai:         config.veniceApiKey ? 'Venice AI llama-3.3-70b (zero data retention)' : 'not configured',
+        },
+      };
+    } catch (err) {
+      reply.code(500);
+      return { success: false, steps, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 
   // --- Start ---
   await server.listen({ port: config.port, host: '0.0.0.0' });

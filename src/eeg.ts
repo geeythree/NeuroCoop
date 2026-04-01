@@ -29,7 +29,13 @@
  * mathematically proven privacy bound.
  */
 import { readFileSync } from 'fs';
+import { randomBytes } from 'crypto';
 import type { EegMetadata } from './types.js';
+
+/** Cryptographically secure random float in [0, 1) */
+function secureRandom(): number {
+  return randomBytes(4).readUInt32BE(0) / 0x100000000;
+}
 
 // --- EDF (European Data Format) Parser ---
 // Spec: https://www.edfplus.info/specs/edf.html
@@ -316,7 +322,7 @@ export function parseEegMetadata(csvData: string): EegMetadata {
   const hasLabels = headers.includes('label') || headers.includes('event');
 
   // Estimate sample rate from timestamps
-  let sampleRate = 256; // default
+  let sampleRate = 250; // default (common EEG sample rate)
   if (dataRows.length >= 2) {
     const t1 = parseFloat(dataRows[0].split(',')[0]);
     const t2 = parseFloat(dataRows[1].split(',')[0]);
@@ -423,9 +429,10 @@ export function deidentifyEeg(
           // Clip channel value to bounded range before noise addition
           const clipped = Math.max(clipRange[0], Math.min(clipRange[1], num));
           // Laplace noise injection (not formal DP — see function docs)
-          const sensitivity = 1.0;
+          // Sensitivity = range of clipped values (how much one sample can change the output)
+          const sensitivity = clipRange[1] - clipRange[0];
           const scale = sensitivity / noiseEpsilon;
-          const u = Math.random() - 0.5;
+          const u = secureRandom() - 0.5;
           const noise = -scale * Math.sign(u) * Math.log(1 - 2 * Math.abs(u));
           return (clipped + noise).toFixed(1);
         }

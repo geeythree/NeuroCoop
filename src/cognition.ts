@@ -58,24 +58,31 @@ export interface GovernanceHealth {
 const VENICE_BASE_URL = process.env.VENICE_BASE_URL ?? 'https://api.venice.ai/api/v1';
 const MODEL = process.env.VENICE_MODEL ?? 'llama-3.3-70b';
 
+const VENICE_TIMEOUT_MS = 30_000;
+
 async function callVenice(apiKey: string, systemPrompt: string, userPrompt: string): Promise<string> {
-  const resp = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      max_tokens: 900,
-      temperature: 0.15,
-      venice_parameters: { enable_web_search: 'off', include_venice_system_prompt: false },
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VENICE_TIMEOUT_MS);
+
+  try {
+    const resp = await fetch(`${VENICE_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 900,
+        temperature: 0.15,
+        venice_parameters: { enable_web_search: 'off', include_venice_system_prompt: false },
+      }),
+      signal: controller.signal,
+    });
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
@@ -84,6 +91,9 @@ async function callVenice(apiKey: string, systemPrompt: string, userPrompt: stri
 
   const data = await resp.json() as { choices?: { message?: { content?: string } }[] };
   return data.choices?.[0]?.message?.content ?? '';
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function extractJSON(text: string): any {
