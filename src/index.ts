@@ -629,7 +629,8 @@ async function main() {
     if (!requireContract(reply)) return;
     const count = await coop!.getProposalCount();
     const limit = Math.min(parseInt(req.query.limit || '50'), 100);
-    const offset = parseInt(req.query.offset || '0');
+    // Default: fetch the LATEST proposals (highest IDs)
+    const offset = parseInt(req.query.offset || String(Math.max(0, count - limit)));
     const start = Math.max(0, offset);
     const end = Math.min(count, start + limit);
     // Fetch in parallel batches of 10
