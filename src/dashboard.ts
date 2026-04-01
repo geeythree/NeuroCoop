@@ -149,11 +149,13 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
 <!-- Live Proposals -->
 <div class="card">
   <h2>Research Proposals</h2>
-  <div class="sub">Live from Filecoin Calibration. Auto-refreshes.</div>
+  <div class="sub">Live from Filecoin Calibration. Auto-refreshes. Latest first.</div>
+  <div style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
   <table>
-    <thead><tr><th>#</th><th>Purpose</th><th>Researcher</th><th>Duration</th><th>Votes</th><th>Status</th><th></th></tr></thead>
+    <thead style="position:sticky;top:0;background:var(--card);z-index:1;"><tr><th>#</th><th>Purpose</th><th>Researcher</th><th>Duration</th><th>Votes</th><th>Status</th><th></th></tr></thead>
     <tbody id="proposalTable"><tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">Loading...</td></tr></tbody>
   </table>
+  </div>
 </div>
 
 <!-- EEG Band Power — zero input -->
@@ -306,8 +308,8 @@ async function fetchProposals() {
     const d = await fetch(API+'/proposals').then(r=>r.json());
     const tb = document.getElementById('proposalTable');
     if (!d.proposals?.length) { tb.innerHTML='<tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">No proposals yet</td></tr>'; return; }
-    // Hide expired proposals with 0 votes (testing noise)
-    const meaningful = d.proposals.filter(p => p.status !== 3 || (p.votesFor||0)+(p.votesAgainst||0) > 0);
+    // Hide expired proposals with 0 votes (testing noise), sort latest first
+    const meaningful = d.proposals.filter(p => p.status !== 3 || (p.votesFor||0)+(p.votesAgainst||0) > 0).reverse();
     if (!meaningful.length) { tb.innerHTML='<tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">No proposals yet</td></tr>'; return; }
     tb.innerHTML = meaningful.map(p => {
       const t = (p.votesFor||0)+(p.votesAgainst||0);
