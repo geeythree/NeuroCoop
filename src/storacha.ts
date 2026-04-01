@@ -1,4 +1,6 @@
 import * as Client from '@storacha/client';
+import * as ed25519 from '@ucanto/principal/ed25519';
+import { parse as parseProof } from '@storacha/client/proof';
 import { createHash } from 'crypto';
 
 let storachaClient: Client.Client | null = null;
@@ -17,20 +19,31 @@ const MAX_RETRIES = 3;
 export async function initStoracha(email: string): Promise<Client.Client> {
   if (storachaClient) return storachaClient;
 
-  console.log('[storacha] Initializing client...');
-  const client = await Client.create();
+  const storachaKey = process.env.STORACHA_KEY;
+  const storachaProof = process.env.STORACHA_PROOF;
 
-  const spaces = client.spaces();
-  if (spaces.length === 0) {
-    console.log('[storacha] No space found. Creating "neurocoop" space...');
-    const space = await client.createSpace('neurocoop');
+  if (storachaKey && storachaProof) {
+    console.log('[storacha] Initializing with pre-authorized agent...');
+    const principal = ed25519.parse(storachaKey);
+    const client = await Client.create({ principal });
+    const proof = await parseProof(storachaProof);
+    const space = await client.addSpace(proof);
     await client.setCurrentSpace(space.did());
-    console.log(`[storacha] Space created: ${space.did()}`);
-  } else {
-    await client.setCurrentSpace(spaces[0].did());
-    console.log(`[storacha] Using space: ${spaces[0].did()}`);
+    console.log(`[storacha] Space ready: ${space.did()}`);
+    storachaClient = client;
+    return client;
   }
 
+  // Fallback: ephemeral client for local dev
+  console.log('[storacha] No STORACHA_KEY/PROOF — creating ephemeral client (uploads will be local)...');
+  const client = await Client.create();
+  const spaces = client.spaces();
+  if (spaces.length === 0) {
+    const space = await client.createSpace('neurocoop');
+    await client.setCurrentSpace(space.did());
+  } else {
+    await client.setCurrentSpace(spaces[0].did());
+  }
   storachaClient = client;
   return client;
 }
