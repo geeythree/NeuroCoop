@@ -4,9 +4,11 @@
 
 **Track:** PL Genesis — NeuroTech (Cognition × Coordination × Computation)
 
-**Live:** [neurocoop-production.up.railway.app](https://neurocoop-production.up.railway.app/health)
+**Live demo:** [neurocoop-production.up.railway.app](https://neurocoop-production.up.railway.app) — open the dashboard and click "Run Band Power Analysis" or "AI Screen" on any proposal, no setup needed
+**Full lifecycle demo:** `POST https://neurocoop-production.up.railway.app/demo/run` — runs join → propose → AI ethics → vote → execute against the live contract in one request
 **Contract:** `0x95cdb710677d855159b77e81d6d386ae83f05dab` on [Filecoin Calibration](https://calibration.filfox.info/en/address/0x95cdb710677d855159b77e81d6d386ae83f05dab) (Chain ID 314159, block 3589831)
 **Storage:** Storacha (IPFS/Filecoin) — primary data layer, multi-gateway retrieval with hash verification
+**Repo:** [github.com/geeythree/NeuroCoop](https://github.com/geeythree/NeuroCoop)
 
 ---
 
@@ -34,6 +36,20 @@ WITH NeuroCoop:
   Users ──→ Cooperative ──→ [AI Ethics Analysis] ──→ Democratic Vote ──→ Researcher
   (users govern collectively; AI informs, humans decide)
 ```
+
+## What Makes This Novel
+
+No existing system combines all of these:
+
+| What | Why it matters |
+|------|---------------|
+| **Cooperative governance on-chain** | Consent is a collective act, not individual — enforced by smart contract, not a checkbox |
+| **AI ethics pre-screening before every vote** | Members who aren't neuroscientists can evaluate proposals they'd otherwise rubber-stamp or blindly reject |
+| **Predatory proposal detection** | The dashboard ships with a deliberately bad proposal pre-filled ("cognitive profiling for ad targeting") — run AI ethics on it and watch it get flagged. This is the design working as intended. |
+| **W3C UCAN delegations as consent proofs** | When a proposal executes, the researcher receives a cryptographically signed, time-bounded capability proof from the cooperative's Storacha space — not an API key, a verifiable credential |
+| **ISO/IEC TS 27560:2023 consent receipts** | Every approved proposal generates a portable consent receipt anchored to a Filecoin transaction hash — auditable by regulators, portable across systems |
+| **Real clinical EEG from PhysioNet** | 64-channel, 160Hz EEG from EEGMMIDB (CC0) — not synthetic data |
+| **Band power extracted in-process** | Delta/theta/alpha/beta/gamma computed locally via multi-scale successive difference analysis — no API call, no data leaving the server |
 
 **Three pillars of the NeuroTech track, all addressed:**
 
@@ -334,6 +350,26 @@ curl -X POST https://neurocoop-production.up.railway.app/vote \
 
 ---
 
+## UCAN Consent Delegation
+
+When a proposal executes, the approved researcher can call `POST /storacha/delegate` to receive a **W3C UCAN delegation** — a cryptographically signed, time-bounded capability proof issued by the cooperative's Storacha space.
+
+```bash
+curl -X POST https://neurocoop-production.up.railway.app/storacha/delegate \
+  -H "Content-Type: application/json" \
+  -d '{ "proposalId": 0, "researcherDid": "did:key:z6Mk...", "signature": "0x..." }'
+```
+
+Response includes:
+- `archive` — base64-encoded UCAN CAR file (portable, verifiable credential)
+- `delegationCid` — content-addressed CID of the delegation block
+- `expiresAt` — matches the on-chain `accessExpiresAt` for the proposal
+- `ability` — `upload/add` scoped to the cooperative's space
+
+When the access window closes, the delegation expires. The researcher cannot extend it. Only a new cooperative vote can grant renewed access.
+
+---
+
 ## Privacy Model
 
 ### What NeuroCoop does
@@ -423,8 +459,8 @@ function expireProposal(uint256 proposalId) external nonReentrant
 ## Quick Start (Local)
 
 ```bash
-git clone <repo>
-cd neurocoop
+git clone https://github.com/geeythree/NeuroCoop.git
+cd NeuroCoop
 npm install
 
 # 1. Deploy NeuroCoop.sol to Filecoin Calibration (FVM) via Remix
@@ -462,8 +498,13 @@ railway login
 railway init
 railway up
 
-# Set environment variables in Railway dashboard:
-# COOP_ADDRESS, OWNER_PRIVATE_KEY, VENICE_API_KEY, STORACHA_EMAIL
+# Set environment variables:
+railway variables --set "COOP_ADDRESS=0x..."
+railway variables --set "OWNER_PRIVATE_KEY=0x..."
+railway variables --set "VENICE_API_KEY=..."
+railway variables --set "STORACHA_EMAIL=..."
+railway variables --set "STORACHA_KEY=..."     # from: npx @storacha/cli key create
+railway variables --set "STORACHA_PROOF=..."   # from: npx @storacha/cli delegation create <server-did> --can 'upload/add' --base64
 ```
 
 ---
