@@ -77,7 +77,7 @@ NeuroCoop is a hackathon prototype. This document describes the **current** secu
 **Current (implemented):**
 - SQLite via `better-sqlite3` (`./data/neurocoop.db`)
 - Tables: `uploads`, `encryption_cache`, `wallets`, `receipts`, `audit_log`
-- On-chain state (membership, votes, proposals) persists independently on Flow EVM
+- On-chain state (membership, votes, proposals) persists independently on Filecoin FVM
 - Server restart does not lose member data or audit trail
 
 **Remaining gap:**

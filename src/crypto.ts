@@ -5,7 +5,7 @@
  * 1. EEG data is encrypted with AES-256-CBC (symmetric)
  * 2. The AES key is encrypted with the owner's secp256k1 public key (asymmetric)
  * 3. Only the owner's private key can recover the AES key
- * 4. On consent verification (checked on-chain via Flow EVM), the server
+ * 4. On consent verification (checked on-chain via Filecoin FVM), the server
  *    decrypts and re-serves the data to authorized researchers
  *
  * Production note: In a production system, this would use threshold encryption

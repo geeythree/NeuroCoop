@@ -32,7 +32,7 @@ abstract contract ReentrancyGuard {
 /// @title NeuroCoop — Neural Data Cooperative Protocol
 /// @notice Collective governance of neural data: members pool de-identified EEG data,
 ///         researchers propose studies, members vote on access.
-/// @dev Deployed on Flow EVM. Implements one-member-one-vote (cognitive equality).
+/// @dev Deployed on Filecoin FVM. Implements one-member-one-vote (cognitive equality).
 ///
 /// Security: ReentrancyGuard on all state-changing functions, deployer-only governance,
 /// quorum enforcement, duplicate data prevention, front-running protection on leave.

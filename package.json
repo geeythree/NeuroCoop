@@ -1,13 +1,13 @@
 {
   "name": "neurocoop",
   "version": "1.0.0",
-  "description": "Neural Data Cooperative Protocol — collective governance of neural data on Flow EVM",
+  "description": "Neural Data Cooperative Protocol — collective governance of neural data on Filecoin FVM",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "start": "node --experimental-require-module dist/index.js",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
@@ -20,8 +20,8 @@
     "consent",
     "privacy",
     "blockchain",
-    "flow",
-    "lit-protocol",
+    "filecoin",
+    "fvm",
     "storacha",
     "eeg",
     "bci",
@@ -39,10 +39,6 @@
     "fastify": "^5.1.0",
     "multiformats": "^13.4.2",
     "viem": "^2.0.0"
-  },
-  "overrides": {
-    "@noble/curves": "^1.8.1",
-    "@noble/hashes": "^1.7.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

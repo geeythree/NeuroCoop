@@ -4,8 +4,8 @@
 
 **Track:** PL Genesis — NeuroTech (Cognition × Coordination × Computation)
 
-**Live:** deploy via `railway up` and add URL here
-**Contract:** deploy NeuroCoop.sol to [Filecoin Calibration](https://calibration.filfox.info) and add address here
+**Live:** [neurocoop-production.up.railway.app](https://neurocoop-production.up.railway.app/health)
+**Contract:** deploy NeuroCoop.sol to [Filecoin Calibration](https://calibration.filfox.info) and paste address in `COOP_ADDRESS`
 **Storage:** Storacha (IPFS/Filecoin) — primary data layer, multi-gateway retrieval with hash verification
 
 ---
@@ -70,7 +70,7 @@ graph TB
         I[Governance Health<br/>Participation + Bias Detection]
     end
 
-    subgraph "Flow EVM — NeuroCoop Contract"
+    subgraph "Filecoin FVM — NeuroCoop Contract"
         J[Join Cooperative]
         K[Submit Proposal]
         L[Vote — 1 member = 1 vote<br/>50% quorum required]
@@ -118,7 +118,7 @@ The Cognition Engine operates at two levels:
 Real signal processing. No API call. Runs locally in-process:
 
 ```bash
-curl -X POST https://neurocoop.up.railway.app/cognition/eeg-bands \
+curl -X POST https://neurocoop-production.up.railway.app/cognition/eeg-bands \
   -H "Content-Type: application/json" \
   -d '{}'
 ```
@@ -216,7 +216,7 @@ Periodic AI assessment of the cooperative's democratic health:
 ### 1. Register Wallet (one-time)
 
 ```bash
-curl -X POST https://neurocoop.up.railway.app/wallet/register \
+curl -X POST https://neurocoop-production.up.railway.app/wallet/register \
   -H "Content-Type: application/json" \
   -d '{ "privateKey": "0x..." }'
 # Returns: { "address": "0x...", "message": "Wallet registered. Use nonce auth for all future calls." }
@@ -225,7 +225,7 @@ curl -X POST https://neurocoop.up.railway.app/wallet/register \
 ### 2. Get Nonce (before each request)
 
 ```bash
-curl https://neurocoop.up.railway.app/auth/nonce/0xYOUR_ADDRESS
+curl https://neurocoop-production.up.railway.app/auth/nonce/0xYOUR_ADDRESS
 # Returns: { "nonce": "abc123...", "message": "NeuroCoop|auth|address:0x...|nonce:abc123|expires:1743..." }
 ```
 
@@ -247,7 +247,7 @@ Private keys are **never transmitted after initial registration**.
 ### 4. Submit a Research Proposal
 
 ```bash
-curl -X POST https://neurocoop.up.railway.app/proposal \
+curl -X POST https://neurocoop-production.up.railway.app/proposal \
   -d '{ "address": "0x...", "nonce": "...", "signature": "...",
         "purpose": "alzheimers-biomarker-detection",
         "description": "...", "durationDays": 90,
@@ -257,14 +257,14 @@ curl -X POST https://neurocoop.up.railway.app/proposal \
 ### 5. Get AI Ethics Analysis Before Voting
 
 ```bash
-curl -X POST https://neurocoop.up.railway.app/cognition/analyze-proposal \
+curl -X POST https://neurocoop-production.up.railway.app/cognition/analyze-proposal \
   -d '{ "proposalId": 0 }'
 ```
 
 ### 6. Vote
 
 ```bash
-curl -X POST https://neurocoop.up.railway.app/vote \
+curl -X POST https://neurocoop-production.up.railway.app/vote \
   -d '{ "address": "0x...", "nonce": "...", "signature": "...", "proposalId": 0, "support": true }'
 ```
 
@@ -319,6 +319,10 @@ curl -X POST https://neurocoop.up.railway.app/vote \
 
 See [SECURITY.md](SECURITY.md) for full analysis.
 
+### Roadmap (upcoming additions)
+
+Planned work toward production—non-custodial wallets, stronger cryptography, formal privacy, audited contracts, and operability—is summarized in [ROADMAP.md](ROADMAP.md).
+
 ---
 
 ## Legal & Ethical Framework
@@ -336,7 +340,7 @@ See [SECURITY.md](SECURITY.md) for full analysis.
 
 ## Smart Contract
 
-`NeuroCoop.sol` — deployed on Flow EVM Testnet (Chain ID 545)
+`NeuroCoop.sol` — deployed on Filecoin Calibration (Chain ID 314159)
 
 ```solidity
 // Key governance properties:
@@ -448,7 +452,7 @@ neurocoop/
 ├── src/
 │   ├── index.ts               # Fastify server + API endpoints
 │   ├── cognition.ts           # Venice AI — ethics analysis, neural insights, governance health
-│   ├── coop.ts                # Flow EVM client for cooperative operations
+│   ├── coop.ts                # Filecoin FVM client for cooperative operations
 │   ├── crypto.ts              # ECIES encryption + nonce-based auth
 │   ├── eeg.ts                 # EEG parsing + noise-based de-identification
 │   ├── storacha.ts            # Decentralized storage (Storacha/IPFS)
@@ -462,6 +466,7 @@ neurocoop/
 ├── railway.json               # Railway deployment config
 ├── nixpacks.toml              # Build config
 ├── SECURITY.md                # Honest security & limitations documentation
+├── ROADMAP.md                 # Upcoming additions toward production readiness
 └── README.md
 ```
 

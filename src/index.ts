@@ -187,7 +187,7 @@ async function main() {
 
   /**
    * POST /join — Upload EEG data and join the cooperative.
-   * Pipeline: Raw EEG → De-identify → Encrypt → Store on Storacha → Join on Flow EVM
+   * Pipeline: Raw EEG → De-identify → Encrypt → Store on Storacha → Join on Filecoin FVM
    */
   server.post<{
     Body: { address?: string; nonce?: string; signature?: string; privateKey?: string; data?: string; filename?: string; deidentify?: boolean; noiseEpsilon?: number };
