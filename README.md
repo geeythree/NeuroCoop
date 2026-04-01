@@ -245,7 +245,39 @@ await fetch('/join', {
 
 Private keys are **never transmitted after initial registration**.
 
-### 4. Submit a Research Proposal
+### 4. Join & Upload EEG Data
+
+The `/join` endpoint accepts an optional `data` field containing raw EEG CSV. If omitted, it automatically uses the bundled PhysioNet EEGMMIDB recording (`S001R01.edf` — 64 channels, 160 Hz, eyes-open resting state, CC0 license) as the default. Every member gets real clinical EEG unless they supply their own.
+
+**Option A — use default PhysioNet data (simplest):**
+```bash
+curl -X POST https://neurocoop-production.up.railway.app/join \
+  -H "Content-Type: application/json" \
+  -d '{ "privateKey": "0x..." }'
+```
+
+**Option B — bring your own EEG CSV:**
+```bash
+curl -X POST https://neurocoop-production.up.railway.app/join \
+  -H "Content-Type: application/json" \
+  -d '{
+    "privateKey": "0x...",
+    "data": "timestamp,Fp1,Fp2,F3,...\n0,12.3,11.1,...",
+    "filename": "my-eeg.csv",
+    "deidentify": true,
+    "noiseEpsilon": 1.0
+  }'
+```
+
+**What happens on every join:**
+1. EEG de-identified — Laplace noise injection (ε=1.0), PII column removal, timestamps made relative
+2. De-identified data encrypted — ECIES secp256k1 + AES-256-CBC (unique ephemeral key per member)
+3. Encrypted blob uploaded to Storacha — returns a content-addressed CID
+4. `joinCooperative()` called on the Filecoin FVM contract with the CID on-chain
+
+Note: EDF file upload directly via the dashboard UI is not yet supported — EDF is used server-side from bundled sample data only. Direct EDF upload is a planned addition (see ROADMAP.md).
+
+### 5. Submit a Research Proposal
 
 ```bash
 curl -X POST https://neurocoop-production.up.railway.app/proposal \
@@ -255,14 +287,14 @@ curl -X POST https://neurocoop-production.up.railway.app/proposal \
         "categories": [1, 2] }'
 ```
 
-### 5. Get AI Ethics Analysis Before Voting
+### 6. Get AI Ethics Analysis Before Voting
 
 ```bash
 curl -X POST https://neurocoop-production.up.railway.app/cognition/analyze-proposal \
   -d '{ "proposalId": 0 }'
 ```
 
-### 6. Vote
+### 7. Vote
 
 ```bash
 curl -X POST https://neurocoop-production.up.railway.app/vote \
