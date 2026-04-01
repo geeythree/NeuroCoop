@@ -1,0 +1,28 @@
+name: Populate Cooperative Proposals
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours
+  workflow_dispatch:          # also triggerable manually from GitHub UI
+
+jobs:
+  populate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Add 20 proposals with votes
+        run: node scripts/populate500.mjs --batch 20
+        env:
+          WALLET_KEY_1: ${{ secrets.WALLET_KEY_1 }}
+          WALLET_KEY_2: ${{ secrets.WALLET_KEY_2 }}
+          WALLET_KEY_3: ${{ secrets.WALLET_KEY_3 }}
