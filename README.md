@@ -5,7 +5,7 @@
 **Track:** PL Genesis — NeuroTech (Cognition × Coordination × Computation)
 
 **Live:** [neurocoop-production.up.railway.app](https://neurocoop-production.up.railway.app/health)
-**Contract:** deploy NeuroCoop.sol to [Filecoin Calibration](https://calibration.filfox.info) and paste address in `COOP_ADDRESS`
+**Contract:** `0x95cdb710677d855159b77e81d6d386ae83f05dab` on [Filecoin Calibration](https://calibration.filfox.info/en/address/0x95cdb710677d855159b77e81d6d386ae83f05dab) (Chain ID 314159, block 3589831)
 **Storage:** Storacha (IPFS/Filecoin) — primary data layer, multi-gateway retrieval with hash verification
 
 ---
@@ -136,7 +136,8 @@ Response:
     "dominantBand": "alpha",
     "interpretation": "Dominant alpha activity — hallmark of relaxed wakefulness (eyes-closed rest). Strong alpha suppression during active tasks."
   },
-  "metadata": { "sampleRate": 250, "channelsAnalysed": 6, "sampleCount": 2500 },
+  "metadata": { "sampleRate": 160, "channelsAnalysed": 64, "sampleCount": 9600 },
+  "source": "edf:64ch/160Hz/60s (PhysioNet EEGMMIDB, CC0)",
   "method": "Multi-scale successive difference analysis (RMS of x[t]-x[t-s], no external API)"
 }
 ```
@@ -289,6 +290,10 @@ curl -X POST https://neurocoop-production.up.railway.app/vote \
 | **GET** | **`/cognition/governance-health`** | **Cooperative governance health score** |
 | **GET** | **`/storacha/verify/:cid`** | **Verify a CID is live on IPFS/Filecoin with hash proof** |
 | **GET** | **`/storacha/records`** | **All uploaded CIDs with Filecoin gateway URLs** |
+| POST | `/expire` | Expire a proposal past its voting deadline (anyone can call) |
+| POST | `/storacha/delegate` | Issue a W3C UCAN delegation to an approved researcher |
+| POST | `/sign-challenge` | Server-side challenge signing helper for dashboard |
+| POST | `/demo/run` | Full lifecycle demo (join → propose → vote → execute) against live contract |
 | GET | `/proposals` | List all proposals |
 | GET | `/proposal/:id` | Proposal detail + consent receipt |
 | GET | `/members` | Cooperative members |
@@ -462,7 +467,10 @@ neurocoop/
 │   ├── config.ts              # Configuration + contract ABI
 │   └── types.ts               # TypeScript types + enums
 ├── sample-data/
-│   └── sample-eeg.csv         # 6-channel EEG sample (250Hz, 4 cognitive states)
+│   ├── S001R01.edf            # PhysioNet EEGMMIDB — 64ch, 160Hz, eyes-open resting state (CC0)
+│   ├── S001R02.edf            # PhysioNet EEGMMIDB — 64ch, 160Hz, eyes-closed resting state (CC0)
+│   ├── S002R01.edf            # PhysioNet EEGMMIDB — 64ch, 160Hz, subject 2 resting state (CC0)
+│   └── sample-eeg.csv         # 6-channel synthetic EEG sample (250Hz, 4 cognitive states, CSV fallback)
 ├── railway.json               # Railway deployment config
 ├── nixpacks.toml              # Build config
 ├── SECURITY.md                # Honest security & limitations documentation

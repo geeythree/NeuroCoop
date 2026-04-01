@@ -50,11 +50,26 @@ signals never leave the server — only statistical metadata is sent.
 **Signal Processing**
 EEG frequency band power (delta/theta/alpha/beta/gamma) is extracted via multi-scale
 successive difference analysis — a genuine signal processing technique implemented
-in pure TypeScript. Statistical de-identification uses Laplace noise injection.
+in pure TypeScript, running in-process with no external API. Statistical
+de-identification uses Laplace noise injection (ε=1.0, sensitivity-clipped to ±500 μV)
+before upload. Real clinical EEG data from PhysioNet EEGMMIDB (64 channels, 160 Hz,
+CC0 license) is used for all demos.
+
+**UCAN Consent Delegation**
+When a proposal executes, approved researchers receive a W3C UCAN delegation from the
+cooperative's Storacha space — a cryptographically signed, time-bounded capability proof
+tied to the on-chain proposal duration. When the window closes, the delegation expires.
+No server-side revocation needed; the expiry is enforced by the UCAN protocol itself.
 
 **Consent Receipts**
 Approved proposals generate ISO/IEC TS 27560:2023 consent receipts anchored to
 Filecoin transaction hashes — a portable, verifiable record of collective consent.
+
+**Live Demo**
+`POST /demo/run` executes the full cooperative lifecycle against the live Filecoin
+contract in a single request: EEG processing → three members join → AI ethics
+screening → proposal submission → three votes → execution → UCAN delegation → receipt.
+Each step returns its on-chain transaction hash.
 
 ## Why This Matters
 

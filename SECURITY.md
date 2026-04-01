@@ -139,8 +139,8 @@ NeuroCoop is a hackathon prototype. This document describes the **current** secu
 - All access attempts logged to audit trail
 
 **Remaining gap:**
-- No rate limiting on data access requests
 - No per-proposal access tokens with rotation
+- Rate limiting is applied globally (`@fastify/rate-limit`), but no per-proposal or per-researcher rate limits on `/decrypt`
 
 ---
 
