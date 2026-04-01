@@ -21,7 +21,7 @@ jobs:
       - run: npm ci
 
       - name: Add 20 proposals with votes
-        run: node scripts/populate500.mjs --batch 20
+        run: node scripts/populate500.mjs --batch 100
         env:
           WALLET_KEY_1: ${{ secrets.WALLET_KEY_1 }}
           WALLET_KEY_2: ${{ secrets.WALLET_KEY_2 }}
