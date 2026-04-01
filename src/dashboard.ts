@@ -156,76 +156,81 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   </table>
 </div>
 
-<!-- AI Ethics -->
+<!-- EEG Band Power — zero input -->
+<div class="card">
+  <h2>EEG Signal Analysis</h2>
+  <div class="sub">Real signal processing on 64-channel clinical EEG from PhysioNet EEGMMIDB (CC0). Extracts delta/theta/alpha/beta/gamma band power. No external API -- runs in-process.</div>
+  <button class="btn btn-blue" onclick="runBandPower()">Run Band Power Analysis</button>
+  <div id="bandResp" class="resp"></div>
+</div>
+
+<!-- AI Ethics — pre-filled -->
 <div class="card" id="aiCard">
   <h2>AI Ethics Pre-Screening</h2>
-  <div class="sub">Venice AI (llama-3.3-70b, zero data retention) evaluates proposals against Neurorights principles. Only proposal text is sent -- never neural data. The AI advises; the cooperative decides.</div>
+  <div class="sub">Venice AI (llama-3.3-70b, zero data retention) screens proposals against Neurorights principles. Only proposal text is sent -- never neural data. The AI advises; the cooperative decides.</div>
   <div class="card-row">
-    <input id="aiId" type="number" placeholder="Proposal #" style="max-width:120px;" />
+    <input id="aiId" type="number" value="0" style="max-width:120px;" />
+    <span style="color:var(--dim);font-size:0.78rem;padding:10px 0;">Proposal # to analyse (try 0)</span>
     <button class="btn btn-purple" onclick="analyseEthics()">Run Ethics Analysis</button>
   </div>
   <div id="aiResp" class="resp"></div>
 </div>
 
-<!-- EEG Band Power -->
-<div class="card">
-  <h2>EEG Signal Analysis</h2>
-  <div class="sub">Real signal processing on 64-channel clinical EEG (PhysioNet EEGMMIDB, CC0). Extracts delta/theta/alpha/beta/gamma band power using multi-scale successive difference analysis. No external API -- runs locally.</div>
-  <button class="btn btn-blue" onclick="runBandPower()">Analyse Band Power</button>
-  <div id="bandResp" class="resp"></div>
-</div>
-
-<!-- Join -->
+<!-- Step 1: Join -->
 <div class="card">
   <h2>Step 1: Join the Cooperative</h2>
-  <div class="sub">Your EEG data is de-identified (Laplace noise + PII strip), encrypted (ECIES secp256k1), stored on Storacha (IPFS/Filecoin), and registered on-chain. The raw signal never leaves your device unencrypted.</div>
+  <div class="sub">De-identifies EEG (Laplace noise + PII strip), encrypts (ECIES secp256k1), stores on Storacha, registers on Filecoin. ~30s for on-chain confirmation.</div>
+  <div style="font-size:0.75rem;color:var(--dim);margin-bottom:8px;">Testnet wallet (pre-filled) -- has no real value. <a href="https://faucet.calibnet.chainsafe-fil.io/" target="_blank">Faucet</a></div>
   <div class="card-row">
-    <input id="joinKey" type="password" placeholder="Private key (0x...)" />
+    <input id="joinKey" type="text" value="0x7096129d010cb538ed827abad1931480a9b3d02af1a907ccc483e136440ceafe" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
     <button class="btn btn-primary" onclick="doJoin()">Join & Upload EEG</button>
   </div>
   <div id="joinResp" class="resp"></div>
 </div>
 
-<!-- Propose -->
+<!-- Step 2: Propose -->
 <div class="card">
   <h2>Step 2: Submit Research Proposal</h2>
-  <div class="sub">Describe what you want to study and why. Members will vote after reviewing the AI ethics analysis.</div>
+  <div class="sub">Researchers describe their study. Members vote after AI ethics screening.</div>
+  <div style="font-size:0.75rem;color:var(--dim);margin-bottom:8px;">Testnet researcher wallet (pre-filled)</div>
   <div class="card-row">
-    <input id="propKey" type="password" placeholder="Researcher private key (0x...)" />
+    <input id="propKey" type="text" value="0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
   </div>
   <div class="card-row">
-    <input id="propPurpose" placeholder="Purpose (e.g., alzheimers-biomarker-study)" />
-    <input id="propDays" type="number" value="30" placeholder="Days" style="max-width:90px;" />
+    <input id="propPurpose" value="cognitive-profiling-for-ad-targeting" placeholder="Purpose" />
+    <input id="propDays" type="number" value="365" style="max-width:90px;" />
   </div>
   <div class="card-row">
-    <textarea id="propDesc" placeholder="Describe the study, data requirements, and intended use..."></textarea>
+    <textarea id="propDesc">Continuous monitoring of attention and emotional state for personalised advertising. We will build predictive models of purchase intent from neural oscillation patterns.</textarea>
   </div>
+  <div style="font-size:0.72rem;color:#f59320;margin-bottom:8px;">This is a deliberately predatory proposal -- run AI Ethics on it after submitting to see it flagged.</div>
   <div class="card-row">
     <button class="btn btn-blue" onclick="doPropose()">Submit Proposal</button>
   </div>
   <div id="propResp" class="resp"></div>
 </div>
 
-<!-- Vote -->
+<!-- Step 3: Vote -->
 <div class="card">
   <h2>Step 3: Vote</h2>
-  <div class="sub">One member = one vote. No token weighting (cognitive equality). 50% quorum required.</div>
+  <div class="sub">One member = one vote. No token weighting (cognitive equality). 50% quorum required for a binding result.</div>
+  <div style="font-size:0.75rem;color:var(--dim);margin-bottom:8px;">Use any registered member's key. Proposal # is pre-filled with the latest.</div>
   <div class="card-row">
-    <input id="voteKey" type="password" placeholder="Member private key (0x...)" />
-    <input id="voteId" type="number" placeholder="Proposal #" style="max-width:100px;" />
+    <input id="voteKey" type="text" value="0xae5374ce56e1f61d98c4b6d3ada9d189d535a90808f514ce2fde2004877cb4fb" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
+    <input id="voteId" type="number" value="0" style="max-width:100px;" />
     <button class="btn btn-green" onclick="doVote(true)">Vote FOR</button>
     <button class="btn btn-red" onclick="doVote(false)">Vote AGAINST</button>
   </div>
   <div id="voteResp" class="resp"></div>
 </div>
 
-<!-- Execute -->
+<!-- Step 4: Execute -->
 <div class="card">
   <h2>Step 4: Execute Proposal</h2>
-  <div class="sub">After the voting period ends, anyone can execute. The smart contract checks quorum + majority and records the outcome permanently on-chain.</div>
+  <div class="sub">After the voting period (5 min), anyone can trigger execution. The contract checks quorum + majority and permanently records the outcome on-chain.</div>
   <div class="card-row">
-    <input id="execKey" type="password" placeholder="Any private key (0x...)" />
-    <input id="execId" type="number" placeholder="Proposal #" style="max-width:100px;" />
+    <input id="execKey" type="text" value="0xae5374ce56e1f61d98c4b6d3ada9d189d535a90808f514ce2fde2004877cb4fb" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
+    <input id="execId" type="number" value="0" style="max-width:100px;" />
     <button class="btn btn-purple" onclick="doExec()">Execute</button>
   </div>
   <div id="execResp" class="resp"></div>
