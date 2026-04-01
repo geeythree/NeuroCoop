@@ -1,5 +1,7 @@
 # NeuroCoop — Neural Data Cooperative Protocol
 
+![Tests](https://img.shields.io/badge/tests-53%20passing-22c55e) ![Chain](https://img.shields.io/badge/chain-Filecoin%20Calibration-0090ff) ![Storage](https://img.shields.io/badge/storage-Storacha%20%2F%20IPFS-f59320) ![AI](https://img.shields.io/badge/AI-Venice%20zero--retention-a78bfa) ![License](https://img.shields.io/badge/license-MIT-green)
+
 > **Collective governance of neural data. BCI users pool de-identified EEG data, vote on research access proposals, and receive AI-assisted governance intelligence — all without surrendering individual control.**
 
 **Track:** PL Genesis — NeuroTech (Cognition × Coordination × Computation)
