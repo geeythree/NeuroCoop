@@ -6,559 +6,469 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NeuroCoop — Neural Data Cooperative</title>
   <style>
+    :root { --bg: #0a0a0f; --card: #12121a; --border: #1e1e2e; --accent: #00d4aa; --text: #e0e0e0; --muted: #888; --dim: #555; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'SF Mono', 'Fira Code', monospace; background: #0a0a0f; color: #e0e0e0; padding: 24px; max-width: 1200px; margin: 0 auto; }
-    h1 { color: #00d4aa; font-size: 1.8rem; margin-bottom: 4px; }
-    .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 4px; }
-    .track { color: #666; font-size: 0.75rem; margin-bottom: 16px; font-style: italic; }
-    .badges { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
-    .badge { padding: 4px 10px; border-radius: 4px; font-size: 0.72rem; font-weight: bold; }
-    .badge-filecoin { background: #0090ff22; color: #0090ff; border: 1px solid #0090ff44; }
-    .badge-storacha { background: #f5932022; color: #f59320; border: 1px solid #f5932044; }
-    .badge-neuro    { background: #ec489922; color: #ec4899; border: 1px solid #ec489944; }
-    .badge-coop     { background: #3b82f622; color: #60a5fa; border: 1px solid #3b82f644; }
-    .badge-ethics   { background: #a78bfa22; color: #a78bfa; border: 1px solid #a78bfa44; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); max-width: 960px; margin: 0 auto; padding: 32px 20px; }
 
-    /* Architecture diagram */
-    .arch { background: #0d0d18; border: 1px solid #1e1e2e; border-radius: 8px; padding: 16px 20px; margin-bottom: 20px; font-size: 0.76rem; color: #888; line-height: 1.8; }
-    .arch strong { color: #00d4aa; }
-    .arch .arrow { color: #444; }
+    header { margin-bottom: 32px; }
+    header h1 { color: var(--accent); font-size: 2rem; margin-bottom: 6px; letter-spacing: -0.5px; }
+    header p { color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
+    .tags { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+    .tag { padding: 3px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
+    .tag-fil { background: #0090ff18; color: #4da6ff; }
+    .tag-stor { background: #f5932018; color: #f59320; }
+    .tag-neur { background: #ec489918; color: #ec4899; }
+    .tag-ven { background: #a78bfa18; color: #a78bfa; }
+    .tag-coop { background: #22c55e18; color: #22c55e; }
 
-    /* Demo mode banner */
-    .demo-banner { background: #1a1a0a; border: 1px solid #f59320aa; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }
-    .demo-banner h3 { color: #f59320; font-size: 0.9rem; margin-bottom: 8px; }
-    .demo-banner p { font-size: 0.78rem; color: #aaa; margin-bottom: 10px; }
-    .demo-banner .wallets { font-size: 0.72rem; color: #666; line-height: 1.8; }
-    .demo-banner .wallets span { color: #f59320; }
-    button.demo-fill { background: #f59320; color: #0a0a0f; margin-top: 8px; }
+    /* Stats bar */
+    .stats-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 28px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+    .stat-card .num { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
+    .stat-card .lbl { font-size: 0.68rem; color: var(--dim); text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
 
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
-    .stat { background: #12121a; border: 1px solid #1e1e2e; border-radius: 8px; padding: 12px 16px; }
-    .stat-label { color: #666; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; }
-    .stat-value { color: #00d4aa; font-size: 1.2rem; margin-top: 4px; }
+    /* Flow pipeline */
+    .pipeline { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; margin-bottom: 28px; }
+    .pipeline h3 { color: var(--accent); font-size: 0.85rem; margin-bottom: 12px; }
+    .pipe-steps { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .pipe-step { padding: 6px 14px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; white-space: nowrap; }
+    .pipe-step.active { background: var(--accent); color: var(--bg); }
+    .pipe-step.done { background: #22c55e22; color: #22c55e; }
+    .pipe-step.pending { background: #ffffff08; color: var(--dim); }
+    .pipe-arrow { color: #333; font-size: 0.9rem; }
 
-    .panel { background: #12121a; border: 1px solid #1e1e2e; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
-    .panel h2 { color: #00d4aa; font-size: 1rem; margin-bottom: 6px; padding-bottom: 8px; border-bottom: 1px solid #1e1e2e; }
-    .panel .how { color: #555; font-size: 0.72rem; margin-bottom: 10px; font-style: italic; }
-    .panel p.desc { color: #888; font-size: 0.78rem; margin-bottom: 12px; }
+    /* Cards */
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 16px; }
+    .card h2 { font-size: 1.05rem; color: var(--text); margin-bottom: 4px; }
+    .card .sub { font-size: 0.78rem; color: var(--muted); margin-bottom: 16px; line-height: 1.4; }
+    .card-row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; align-items: center; }
 
-    .form-row { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-    input, textarea, select {
-      background: #0a0a0f; border: 1px solid #2a2a3a; color: #e0e0e0;
-      padding: 8px 12px; border-radius: 4px; font-family: inherit; font-size: 0.82rem; flex: 1; min-width: 180px;
-    }
-    input:focus, textarea:focus, select:focus { border-color: #00d4aa; outline: none; }
-    textarea { min-height: 60px; resize: vertical; }
-    button {
-      background: #00d4aa; color: #0a0a0f; border: none; padding: 8px 18px;
-      border-radius: 4px; font-family: inherit; font-weight: bold; font-size: 0.82rem; cursor: pointer; white-space: nowrap;
-    }
-    button:hover { opacity: 0.85; }
-    button.vote-for    { background: #22c55e; color: white; }
-    button.vote-against{ background: #ef4444; color: white; }
-    button.secondary   { background: #3b82f6; color: white; }
-    button.execute     { background: #a78bfa; color: white; }
+    input, textarea, select { background: #0d0d18; border: 1px solid #2a2a3a; color: var(--text); padding: 10px 14px; border-radius: 6px; font-size: 0.85rem; font-family: inherit; flex: 1; min-width: 160px; }
+    input:focus, textarea:focus { border-color: var(--accent); outline: none; }
+    textarea { min-height: 70px; resize: vertical; }
 
-    .result { background: #0a0a0f; border: 1px solid #2a2a3a; border-radius: 4px; padding: 12px; margin-top: 12px; font-size: 0.74rem; white-space: pre-wrap; word-break: break-all; max-height: 340px; overflow-y: auto; }
-    .result.success { border-color: #00d4aa55; }
-    .result.error   { border-color: #ef444455; color: #f87171; }
-    .result.info    { border-color: #3b82f655; color: #93c5fd; }
+    .btn { border: none; padding: 10px 20px; border-radius: 6px; font-size: 0.85rem; font-weight: 600; cursor: pointer; font-family: inherit; transition: opacity 0.15s; white-space: nowrap; }
+    .btn:hover { opacity: 0.85; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: var(--bg); }
+    .btn-blue { background: #3b82f6; color: white; }
+    .btn-green { background: #22c55e; color: white; }
+    .btn-red { background: #ef4444; color: white; }
+    .btn-purple { background: #a78bfa; color: white; }
+    .btn-orange { background: #f59320; color: var(--bg); }
+    .btn-sm { padding: 6px 14px; font-size: 0.78rem; }
 
-    table { width: 100%; border-collapse: collapse; font-size: 0.76rem; }
-    th { text-align: left; color: #555; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; padding: 8px; border-bottom: 1px solid #1e1e2e; }
-    td { padding: 8px; border-bottom: 1px solid #1e1e2e11; vertical-align: top; }
-    .tag { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.68rem; font-weight: bold; }
-    .tag-active   { background: #3b82f622; color: #60a5fa; }
-    .tag-approved { background: #22c55e22; color: #22c55e; }
-    .tag-rejected { background: #ef444422; color: #ef4444; }
-    .tag-executed { background: #a78bfa22; color: #a78bfa; }
-    a { color: #00d4aa; text-decoration: none; }
+    /* Response boxes */
+    .resp { border-radius: 8px; padding: 14px 16px; margin-top: 12px; font-size: 0.82rem; line-height: 1.5; display: none; }
+    .resp.ok { display: block; background: #22c55e0a; border: 1px solid #22c55e33; }
+    .resp.err { display: block; background: #ef44440a; border: 1px solid #ef444433; color: #f87171; }
+    .resp.loading { display: block; background: #3b82f60a; border: 1px solid #3b82f633; color: #93c5fd; }
+    .resp .label { font-weight: 600; color: var(--accent); display: block; margin-bottom: 6px; }
+    .resp .field { color: var(--muted); font-size: 0.78rem; margin: 2px 0; }
+    .resp .tx-link { color: var(--accent); font-size: 0.75rem; word-break: break-all; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+    th { text-align: left; color: var(--dim); font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+    td { padding: 10px 8px; border-bottom: 1px solid #ffffff06; vertical-align: top; }
+    .status { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600; }
+    .status-active { background: #3b82f618; color: #60a5fa; }
+    .status-approved { background: #22c55e18; color: #22c55e; }
+    .status-rejected { background: #ef444418; color: #ef4444; }
+
+    .vote-bar { display: flex; height: 4px; border-radius: 2px; overflow: hidden; margin-top: 6px; background: #1e1e2e; }
+    .vb-for { background: #22c55e; transition: width 0.3s; }
+    .vb-against { background: #ef4444; transition: width 0.3s; }
+
+    a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
-    .vote-bar { display: flex; height: 5px; border-radius: 3px; overflow: hidden; margin-top: 4px; background: #1e1e2e; }
-    .vote-for-bar     { background: #22c55e; transition: width 0.3s; }
-    .vote-against-bar { background: #ef4444; transition: width 0.3s; }
-    .risk-low      { color: #22c55e; }
-    .risk-medium   { color: #f59320; }
-    .risk-high     { color: #ef4444; }
-    .risk-critical { color: #dc2626; font-weight: bold; }
+    footer { color: #333; font-size: 0.65rem; text-align: center; margin-top: 40px; line-height: 1.7; }
+
+    /* AI result */
+    .ai-result { padding: 16px; border-radius: 8px; background: #0d0d18; border: 1px solid var(--border); }
+    .ai-score { font-size: 2rem; font-weight: 700; }
+    .ai-score.low { color: #22c55e; }
+    .ai-score.med { color: #f59320; }
+    .ai-score.high { color: #ef4444; }
+    .ai-rec { display: inline-block; padding: 4px 12px; border-radius: 4px; font-weight: 700; font-size: 0.78rem; margin-left: 12px; }
+    .ai-rec.approve { background: #22c55e22; color: #22c55e; }
+    .ai-rec.scrutinize { background: #f5932022; color: #f59320; }
+    .ai-rec.reject { background: #ef444422; color: #ef4444; }
+    .ai-detail { margin-top: 12px; font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+    .ai-list { margin: 6px 0; padding-left: 16px; }
+    .ai-list li { margin: 3px 0; }
+    .align-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    .align-item { font-size: 0.75rem; color: var(--muted); }
+    .align-bar { height: 3px; border-radius: 2px; background: #1e1e2e; margin-top: 3px; }
+    .align-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+
+    @media (max-width: 640px) {
+      .stats-bar { grid-template-columns: repeat(2, 1fr); }
+      .pipe-steps { flex-direction: column; align-items: flex-start; }
+      .pipe-arrow { display: none; }
+    }
   </style>
 </head>
 <body>
+
+<header>
   <h1>NeuroCoop</h1>
-  <p class="subtitle">Neural Data Cooperative Protocol — collective governance of BCI/EEG data</p>
-  <p class="track">Cognition × Coordination × Computation — PL Genesis Neurotech Track</p>
-
-  <div class="badges">
-    <span class="badge badge-neuro">Neurotech</span>
-    <span class="badge badge-coop">Cooperative Governance</span>
-    <span class="badge badge-filecoin">Filecoin FVM</span>
-    <span class="badge badge-storacha">Storacha · IPFS</span>
-    <span class="badge badge-ethics">Neurorights Foundation</span>
+  <p>Neural Data Cooperative Protocol — BCI users pool de-identified EEG data, vote on research access, and receive AI-assisted ethics screening before every decision.</p>
+  <div class="tags">
+    <span class="tag tag-neur">Neurotech</span>
+    <span class="tag tag-coop">Cooperative Governance</span>
+    <span class="tag tag-fil">Filecoin FVM</span>
+    <span class="tag tag-stor">Storacha / IPFS</span>
+    <span class="tag tag-ven">Venice AI Ethics</span>
   </div>
+</header>
 
-  <!-- Architecture -->
-  <div class="arch">
-    <strong>How it works:</strong>&nbsp;
-    BCI user uploads de-identified EEG <span class="arrow">→</span>
-    Encrypted with ECIES &amp; stored on <strong>Storacha</strong> (IPFS/Filecoin) <span class="arrow">→</span>
-    CID registered on <strong>Filecoin FVM</strong> contract <span class="arrow">→</span>
-    Researcher submits proposal <span class="arrow">→</span>
-    <strong>Venice AI</strong> screens ethics before voting opens <span class="arrow">→</span>
-    Members vote (one member, one vote) <span class="arrow">→</span>
-    Contract enforces outcome — researcher gets UCAN delegation + data access only if approved
-    <br/><br/>
-    <strong>Contract:</strong> <a href="https://calibration.filfox.info/en/address/${contractAddress}" target="_blank">${contractAddress}</a> on Filecoin Calibration (chain ID 314159)
+<!-- Stats -->
+<div class="stats-bar">
+  <div class="stat-card"><div class="num" id="s-members">-</div><div class="lbl">Members</div></div>
+  <div class="stat-card"><div class="num" id="s-proposals">-</div><div class="lbl">Proposals</div></div>
+  <div class="stat-card"><div class="num" style="font-size:0.85rem;color:#4da6ff;" id="s-contract">${contractAddress.slice(0,8)}...</div><div class="lbl">Contract</div></div>
+  <div class="stat-card"><div class="num" style="font-size:0.85rem;" id="s-status">-</div><div class="lbl">Status</div></div>
+</div>
+
+<!-- Pipeline visualisation -->
+<div class="pipeline">
+  <h3>Protocol Flow</h3>
+  <div class="pipe-steps">
+    <div class="pipe-step active">Upload EEG</div><span class="pipe-arrow">&rarr;</span>
+    <div class="pipe-step active">De-identify + Encrypt</div><span class="pipe-arrow">&rarr;</span>
+    <div class="pipe-step active">Store on Storacha</div><span class="pipe-arrow">&rarr;</span>
+    <div class="pipe-step active">Join on Filecoin</div><span class="pipe-arrow">&rarr;</span>
+    <div class="pipe-step active">Propose Research</div><span class="pipe-arrow">&rarr;</span>
+    <div class="pipe-step active">AI Ethics Screen</div><span class="pipe-arrow">&rarr;</span>
+    <div class="pipe-step active">Vote (1 member = 1 vote)</div><span class="pipe-arrow">&rarr;</span>
+    <div class="pipe-step active">Access Granted / Denied</div>
   </div>
+</div>
 
-  <!-- Demo mode -->
-  <div class="demo-banner">
-    <h3>Demo Mode — Testnet Wallets</h3>
-    <p>Pre-fill forms with testnet-only wallets to explore the full lifecycle. These keys have no real value.</p>
-    <div class="wallets">
-      <span>Member A:</span> 0xdf599beac33f34d81e1c7fb8e76c15f68538152f198da156268cbe72f74266ab &nbsp;|&nbsp;
-      <span>Member B:</span> 0x7016002340be3593ea4a526b0c7fbe269676ac342cb8284a8d6fda25c6e292e0 &nbsp;|&nbsp;
-      <span>Member C:</span> 0x7096129d010cb538ed827abad1931480a9b3d02af1a907ccc483e136440ceafe &nbsp;|&nbsp;
-      <span>Researcher:</span> 0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8
-    </div>
-    <button class="demo-fill" onclick="fillDemoWallets()">Fill All Forms with Demo Wallets</button>
+<!-- Live Proposals -->
+<div class="card">
+  <h2>Research Proposals</h2>
+  <div class="sub">Live from Filecoin Calibration. Auto-refreshes.</div>
+  <table>
+    <thead><tr><th>#</th><th>Purpose</th><th>Researcher</th><th>Duration</th><th>Votes</th><th>Status</th><th></th></tr></thead>
+    <tbody id="proposalTable"><tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- AI Ethics -->
+<div class="card" id="aiCard">
+  <h2>AI Ethics Pre-Screening</h2>
+  <div class="sub">Venice AI (llama-3.3-70b, zero data retention) evaluates proposals against Neurorights principles. Only proposal text is sent -- never neural data. The AI advises; the cooperative decides.</div>
+  <div class="card-row">
+    <input id="aiId" type="number" placeholder="Proposal #" style="max-width:120px;" />
+    <button class="btn btn-purple" onclick="analyseEthics()">Run Ethics Analysis</button>
   </div>
+  <div id="aiResp" class="resp"></div>
+</div>
 
-  <!-- Live demo runner -->
-  <div class="panel" style="border-color:#00d4aa44;">
-    <h2 style="color:#00d4aa;">Run Live Demo</h2>
-    <p class="desc">Executes the complete NeuroCoop lifecycle against the live Filecoin FVM contract — EEG processing, de-identification, cooperative join, AI ethics screening, voting, and execution. Uses testnet-only demo wallets. Transactions are real and visible on Filfox.</p>
-    <p class="how">Requires tFIL at: <a href="https://faucet.calibnet.chainsafe-fil.io/" target="_blank">faucet.calibnet.chainsafe-fil.io</a> for the demo wallets.</p>
-    <button id="demoBtn" onclick="runDemo()" style="font-size:0.9rem;padding:10px 28px;">Run Full Lifecycle Demo</button>
-    <div id="demoResult" style="display:none;margin-top:14px;"></div>
+<!-- EEG Band Power -->
+<div class="card">
+  <h2>EEG Signal Analysis</h2>
+  <div class="sub">Real signal processing on 64-channel clinical EEG (PhysioNet EEGMMIDB, CC0). Extracts delta/theta/alpha/beta/gamma band power using multi-scale successive difference analysis. No external API -- runs locally.</div>
+  <button class="btn btn-blue" onclick="runBandPower()">Analyse Band Power</button>
+  <div id="bandResp" class="resp"></div>
+</div>
+
+<!-- Join -->
+<div class="card">
+  <h2>Step 1: Join the Cooperative</h2>
+  <div class="sub">Your EEG data is de-identified (Laplace noise + PII strip), encrypted (ECIES secp256k1), stored on Storacha (IPFS/Filecoin), and registered on-chain. The raw signal never leaves your device unencrypted.</div>
+  <div class="card-row">
+    <input id="joinKey" type="password" placeholder="Private key (0x...)" />
+    <button class="btn btn-primary" onclick="doJoin()">Join & Upload EEG</button>
   </div>
+  <div id="joinResp" class="resp"></div>
+</div>
 
-  <!-- Live stats -->
-  <div class="stats">
-    <div class="stat"><div class="stat-label">Members</div><div class="stat-value" id="s-members">—</div></div>
-    <div class="stat"><div class="stat-label">Proposals</div><div class="stat-value" id="s-proposals">—</div></div>
-    <div class="stat"><div class="stat-label">Chain</div><div class="stat-value" style="font-size:0.75rem;">Filecoin Cal.</div></div>
-    <div class="stat"><div class="stat-label">Storage</div><div class="stat-value" id="s-storage" style="font-size:0.75rem;">—</div></div>
+<!-- Propose -->
+<div class="card">
+  <h2>Step 2: Submit Research Proposal</h2>
+  <div class="sub">Describe what you want to study and why. Members will vote after reviewing the AI ethics analysis.</div>
+  <div class="card-row">
+    <input id="propKey" type="password" placeholder="Researcher private key (0x...)" />
   </div>
-
-  <!-- Live: Proposals table -->
-  <div class="panel">
-    <h2>Research Proposals <span style="color:#444;font-size:0.75rem;font-weight:normal;">(live · auto-refreshes)</span></h2>
-    <table>
-      <thead><tr><th>#</th><th>Purpose</th><th>Researcher</th><th>Duration</th><th>Votes (For / Against)</th><th>Status</th></tr></thead>
-      <tbody id="proposalTable"><tr><td colspan="6" style="color:#555;text-align:center;padding:20px;">Loading from Filecoin...</td></tr></tbody>
-    </table>
+  <div class="card-row">
+    <input id="propPurpose" placeholder="Purpose (e.g., alzheimers-biomarker-study)" />
+    <input id="propDays" type="number" value="30" placeholder="Days" style="max-width:90px;" />
   </div>
-
-  <!-- AI Ethics Analysis -->
-  <div class="panel">
-    <h2>AI Ethics Pre-Screening</h2>
-    <p class="desc">Before voting opens, Venice AI (llama-3.3-70b, zero data retention) screens proposals for risks members may miss. Only the proposal text is sent — no neural data.</p>
-    <p class="how">Enter a proposal ID to analyse, or paste proposal details directly.</p>
-    <div class="form-row">
-      <input id="aiProposalId" type="number" placeholder="Proposal ID (0, 1, 2…)" style="max-width:160px;" />
-      <button class="secondary" onclick="analyseProposal()">Analyse Ethics</button>
-    </div>
-    <div id="aiResult" class="result" style="display:none;"></div>
+  <div class="card-row">
+    <textarea id="propDesc" placeholder="Describe the study, data requirements, and intended use..."></textarea>
   </div>
-
-  <!-- Join Cooperative -->
-  <div class="panel">
-    <h2>Join the Cooperative</h2>
-    <p class="desc">Upload de-identified EEG data. It is encrypted with your public key before being stored on Storacha (IPFS/Filecoin). The raw data never leaves your possession unencrypted.</p>
-    <p class="how">Step 1 of 3: Join → Submit Proposal → Vote</p>
-    <div class="form-row">
-      <input id="joinKey" type="password" placeholder="Private key (0x…)" />
-      <button onclick="joinCoop()">Join &amp; Upload EEG</button>
-    </div>
-    <div id="joinResult" class="result" style="display:none;"></div>
+  <div class="card-row">
+    <button class="btn btn-blue" onclick="doPropose()">Submit Proposal</button>
   </div>
+  <div id="propResp" class="resp"></div>
+</div>
 
-  <!-- Submit Proposal -->
-  <div class="panel">
-    <h2>Submit Research Proposal</h2>
-    <p class="desc">Any address can submit a proposal. Members vote on whether to grant access. Proposals are recorded on-chain.</p>
-    <p class="how">Step 2 of 3: After joining, submit a proposal as a researcher.</p>
-    <div class="form-row">
-      <input id="propKey" type="password" placeholder="Researcher private key (0x…)" />
-    </div>
-    <div class="form-row">
-      <input id="propPurpose" placeholder="Purpose (e.g., alzheimers-biomarker-study)" />
-      <input id="propDuration" type="number" placeholder="Days" value="30" style="max-width:100px;" />
-    </div>
-    <div class="form-row">
-      <textarea id="propDesc" placeholder="Describe the study and what data you need…"></textarea>
-    </div>
-    <button class="secondary" onclick="submitProposal()">Submit Proposal</button>
-    <div id="propResult" class="result" style="display:none;"></div>
+<!-- Vote -->
+<div class="card">
+  <h2>Step 3: Vote</h2>
+  <div class="sub">One member = one vote. No token weighting (cognitive equality). 50% quorum required.</div>
+  <div class="card-row">
+    <input id="voteKey" type="password" placeholder="Member private key (0x...)" />
+    <input id="voteId" type="number" placeholder="Proposal #" style="max-width:100px;" />
+    <button class="btn btn-green" onclick="doVote(true)">Vote FOR</button>
+    <button class="btn btn-red" onclick="doVote(false)">Vote AGAINST</button>
   </div>
+  <div id="voteResp" class="resp"></div>
+</div>
 
-  <!-- Vote -->
-  <div class="panel">
-    <h2>Cast Your Vote</h2>
-    <p class="desc">One member = one vote. Cognitive equality — no token weighting. Quorum: 50% of members must vote for a result to be binding.</p>
-    <p class="how">Step 3 of 3: Vote on a proposal, then execute it to finalise the outcome.</p>
-    <div class="form-row">
-      <input id="voteKey" type="password" placeholder="Member private key (0x…)" />
-      <input id="voteId" type="number" placeholder="Proposal #" style="max-width:100px;" />
-      <button class="vote-for" onclick="castVote(true)">Vote FOR</button>
-      <button class="vote-against" onclick="castVote(false)">Vote AGAINST</button>
-    </div>
-    <div id="voteResult" class="result" style="display:none;"></div>
+<!-- Execute -->
+<div class="card">
+  <h2>Step 4: Execute Proposal</h2>
+  <div class="sub">After the voting period ends, anyone can execute. The smart contract checks quorum + majority and records the outcome permanently on-chain.</div>
+  <div class="card-row">
+    <input id="execKey" type="password" placeholder="Any private key (0x...)" />
+    <input id="execId" type="number" placeholder="Proposal #" style="max-width:100px;" />
+    <button class="btn btn-purple" onclick="doExec()">Execute</button>
   </div>
+  <div id="execResp" class="resp"></div>
+</div>
 
-  <!-- Execute -->
-  <div class="panel">
-    <h2>Execute Proposal</h2>
-    <p class="desc">After the voting period, anyone can execute the proposal. The contract checks quorum and majority, then permanently records the outcome on-chain.</p>
-    <div class="form-row">
-      <input id="execKey" type="password" placeholder="Any private key (0x…)" />
-      <input id="execId" type="number" placeholder="Proposal #" style="max-width:100px;" />
-      <button class="execute" onclick="execProposal()">Execute</button>
-    </div>
-    <div id="execResult" class="result" style="display:none;"></div>
-  </div>
+<!-- Members -->
+<div class="card">
+  <h2>Cooperative Members</h2>
+  <div class="sub">Live from Filecoin.</div>
+  <table>
+    <thead><tr><th>Address</th><th>Channels</th><th>Rate</th><th>De-ID</th><th>Storacha CID</th><th>Joined</th></tr></thead>
+    <tbody id="memberTable"><tr><td colspan="6" style="color:var(--dim);text-align:center;padding:20px;">Loading...</td></tr></tbody>
+  </table>
+</div>
 
-  <!-- Researcher data access (with signature challenge) -->
-  <div class="panel">
-    <h2>Access Pooled Data (Researcher)</h2>
-    <p class="desc">If your proposal was approved on-chain, access the cooperative's pooled de-identified EEG data. Identity is verified via cryptographic signature — proving you control the researcher address without transmitting a private key.</p>
-    <p class="how">Flow: get challenge → sign it → submit. The contract enforces access expiry.</p>
-    <div class="form-row">
-      <input id="decryptId" type="number" placeholder="Approved proposal #" style="max-width:140px;" />
-      <input id="decryptAddr" placeholder="Researcher address (0x…)" />
-      <button class="secondary" onclick="getChallenge()">1. Get Challenge</button>
-    </div>
-    <div id="challengeBox" style="display:none;">
-      <div class="result info" id="challengeMsg" style="margin-bottom:8px;"></div>
-      <div class="form-row">
-        <input id="researcherKey" type="password" placeholder="Researcher private key — signs locally, never sent" />
-        <button onclick="signAndAccess()">2. Sign &amp; Access Data</button>
-      </div>
-    </div>
-    <div id="decryptResult" class="result" style="display:none;"></div>
-  </div>
+<!-- Events -->
+<div class="card">
+  <h2>Governance Log</h2>
+  <table>
+    <thead><tr><th>Event</th><th>Details</th><th>Tx</th><th>Time</th></tr></thead>
+    <tbody id="eventLog"><tr><td colspan="4" style="color:var(--dim);text-align:center;padding:20px;">Loading...</td></tr></tbody>
+  </table>
+</div>
 
-  <!-- Live: Members -->
-  <div class="panel">
-    <h2>Cooperative Members <span style="color:#444;font-size:0.75rem;font-weight:normal;">(live)</span></h2>
-    <table>
-      <thead><tr><th>Address</th><th>Channels</th><th>Sample Rate</th><th>De-identified</th><th>CID (Storacha)</th><th>Joined</th></tr></thead>
-      <tbody id="memberTable"><tr><td colspan="6" style="color:#555;text-align:center;padding:20px;">Loading...</td></tr></tbody>
-    </table>
-  </div>
+<footer>
+  NeuroCoop -- PL Genesis: Frontiers of Collaboration &middot; Neurotech Track<br/>
+  Aligned with Neurorights Foundation &middot; UNESCO 2025 &middot; Chile Art. 19 &middot; Colorado HB 24-1058 &middot; IEEE P7700<br/>
+  <a href="https://calibration.filfox.info/en/address/${contractAddress}" target="_blank">View contract on Filfox</a>
+</footer>
 
-  <!-- Live: Governance log -->
-  <div class="panel">
-    <h2>Governance Log <span style="color:#444;font-size:0.75rem;font-weight:normal;">(live)</span></h2>
-    <table>
-      <thead><tr><th>Event</th><th>Details</th><th>Tx (Filfox)</th><th>Time</th></tr></thead>
-      <tbody id="eventLog"><tr><td colspan="4" style="color:#555;text-align:center;padding:20px;">Loading...</td></tr></tbody>
-    </table>
-  </div>
+<script>
+const API = '';
+const SL = ['Voting Open','Rejected','Access Granted','Expired'];
+const SC = ['status-active','status-rejected','status-approved','status-rejected'];
 
-  <p style="color:#333;font-size:0.65rem;text-align:center;margin-top:24px;">
-    NeuroCoop — PL Genesis: Frontiers of Collaboration · Neurotech Track<br/>
-    Aligned with: Neurorights Foundation (Yuste et al.) · UNESCO Nov 2025 · Chile Art. 19 (2021) · Colorado HB 24-1058 · IEEE P7700<br/>
-    MIT License · <a href="https://calibration.filfox.info/en/address/${contractAddress}" target="_blank">View contract on Filfox</a>
-  </p>
+function fmtAddr(a) { return a ? a.slice(0,6)+'...'+a.slice(-4) : '?'; }
+function fmtErr(d) { if (typeof d === 'string') return d; if (d?.error) return d.error.split('\\n')[0].replace(/^.*reason:|Details:.*$/g,'').trim() || d.error; return JSON.stringify(d); }
 
-  <script>
-    const API = '';
-    const STATUS_LABELS = ['Voting Open', 'Rejected', 'Access Granted', 'Expired'];
-    const STATUS_TAGS   = ['tag-active', 'tag-rejected', 'tag-executed', 'tag-rejected'];
+function showResp(id, data, ok) {
+  const el = document.getElementById(id);
+  if (ok === 'loading') { el.className='resp loading'; el.innerHTML=data; return; }
+  el.className = ok ? 'resp ok' : 'resp err';
+  el.innerHTML = ok ? data : fmtErr(data);
+}
 
-    // Demo wallets (testnet only)
-    const DEMO = {
-      memberA:    '0xdf599beac33f34d81e1c7fb8e76c15f68538152f198da156268cbe72f74266ab',
-      memberB:    '0x7016002340be3593ea4a526b0c7fbe269676ac342cb8284a8d6fda25c6e292e0',
-      researcher: '0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8',
-    };
+// ── Reads ──
 
-    function fillDemoWallets() {
-      document.getElementById('joinKey').value    = DEMO.memberB;
-      document.getElementById('propKey').value    = DEMO.researcher;
-      document.getElementById('voteKey').value    = DEMO.memberA;
-      document.getElementById('execKey').value    = DEMO.memberA;
-      document.getElementById('researcherKey').value = DEMO.researcher;
-      document.getElementById('propPurpose').value   = 'seizure-detection-validation';
-      document.getElementById('propDuration').value  = '30';
-      document.getElementById('propDesc').value      = 'Validate a seizure-detection ML model against de-identified EEG. Results published open-access under CC-BY 4.0.';
-    }
+async function refresh() {
+  try {
+    const h = await fetch(API+'/health').then(r=>r.json());
+    document.getElementById('s-members').textContent = h.cooperative?.members ?? '?';
+    document.getElementById('s-proposals').textContent = h.cooperative?.proposals ?? '?';
+    document.getElementById('s-status').textContent = h.contractReady ? 'Live' : 'Deploying';
+  } catch(e) {}
+  fetchProposals(); fetchMembers(); fetchEvents();
+}
 
-    function show(id, data, type) {
-      const el = document.getElementById(id);
-      el.style.display = 'block';
-      el.className = 'result ' + (type || (data?.success === false ? 'error' : 'success'));
-      el.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
-    }
+async function fetchProposals() {
+  try {
+    const d = await fetch(API+'/proposals').then(r=>r.json());
+    const tb = document.getElementById('proposalTable');
+    if (!d.proposals?.length) { tb.innerHTML='<tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">No proposals yet</td></tr>'; return; }
+    tb.innerHTML = d.proposals.map(p => {
+      const t = (p.votesFor||0)+(p.votesAgainst||0);
+      const fp = t>0 ? Math.round(p.votesFor/t*100) : 0;
+      const ap = t>0 ? Math.round(p.votesAgainst/t*100) : 0;
+      return '<tr><td style="color:var(--muted);">'+p.id+'</td>'+
+        '<td><strong>'+esc(p.purpose||'')+'</strong><br/><span style="color:var(--dim);font-size:0.75rem;">'+esc((p.description||'').slice(0,80))+'</span></td>'+
+        '<td style="color:var(--muted);font-size:0.78rem;">'+fmtAddr(p.researcher)+'</td>'+
+        '<td>'+p.durationDays+'d</td>'+
+        '<td>'+(p.votesFor||0)+' / '+(p.votesAgainst||0)+'<div class="vote-bar"><div class="vb-for" style="width:'+fp+'%"></div><div class="vb-against" style="width:'+ap+'%"></div></div></td>'+
+        '<td><span class="status '+(SC[p.status]||'')+'">'+(SL[p.status]||'?')+'</span></td>'+
+        '<td>'+(p.status===0?'<button class="btn btn-purple btn-sm" onclick="document.getElementById(\\'aiId\\').value='+p.id+';analyseEthics()">AI Screen</button>':'')+'</td></tr>';
+    }).join('');
+  } catch(e) {}
+}
 
-    // ── Read-only views ──────────────────────────────────────────────────────
+async function fetchMembers() {
+  try {
+    const d = await fetch(API+'/members').then(r=>r.json());
+    const tb = document.getElementById('memberTable');
+    if (!d.members?.length) { tb.innerHTML='<tr><td colspan="6" style="color:var(--dim);text-align:center;padding:20px;">No members yet</td></tr>'; return; }
+    tb.innerHTML = d.members.map(m => {
+      const cid = m.storachaCid||'';
+      const cidHtml = cid.startsWith('local:')
+        ? '<span style="color:var(--dim);">local</span>'
+        : '<a href="https://'+cid+'.ipfs.w3s.link" target="_blank">'+cid.slice(0,12)+'...</a>';
+      return '<tr><td style="font-size:0.78rem;">'+fmtAddr(m.address)+'</td><td>'+m.channelCount+'</td><td>'+m.sampleRate+' Hz</td>'+
+        '<td>'+(m.deidentified?'<span style="color:#22c55e;">Yes</span>':'No')+'</td><td style="font-size:0.75rem;">'+cidHtml+'</td>'+
+        '<td style="color:var(--dim);font-size:0.75rem;">'+(m.joinedAt?new Date(m.joinedAt*1000).toLocaleDateString():'')+'</td></tr>';
+    }).join('');
+  } catch(e) {}
+}
 
-    async function fetchHealth() {
-      try {
-        const d = await fetch(API + '/health').then(r => r.json());
-        document.getElementById('s-members').textContent   = d.cooperative?.members ?? '?';
-        document.getElementById('s-proposals').textContent = d.cooperative?.proposals ?? '?';
-        document.getElementById('s-storage').textContent   = d.storage || '?';
-      } catch(e) {}
-    }
+async function fetchEvents() {
+  try {
+    const d = await fetch(API+'/events').then(r=>r.json());
+    const tb = document.getElementById('eventLog');
+    if (!d.events?.length) { tb.innerHTML='<tr><td colspan="4" style="color:var(--dim);text-align:center;padding:20px;">No events yet</td></tr>'; return; }
+    tb.innerHTML = [...d.events].reverse().slice(0,15).map(e =>
+      '<tr><td><span class="status status-active">'+e.type+'</span></td>'+
+      '<td style="font-size:0.75rem;color:var(--muted);">'+esc(JSON.stringify(e.data||{}).slice(0,60))+'</td>'+
+      '<td><a href="https://calibration.filfox.info/en/tx/'+e.txHash+'" target="_blank" style="font-size:0.72rem;">'+(e.txHash||'').slice(0,10)+'...</a></td>'+
+      '<td style="color:var(--dim);font-size:0.72rem;">'+(e.timestamp?new Date(e.timestamp).toLocaleTimeString():'')+'</td></tr>'
+    ).join('');
+  } catch(e) {}
+}
 
-    async function fetchProposals() {
-      try {
-        const d = await fetch(API + '/proposals').then(r => r.json());
-        const tb = document.getElementById('proposalTable');
-        if (!d.proposals?.length) { tb.innerHTML = '<tr><td colspan="6" style="color:#555;text-align:center;padding:20px;">No proposals yet — submit one below</td></tr>'; return; }
-        tb.innerHTML = d.proposals.map(p => {
-          const total   = (p.votesFor || 0) + (p.votesAgainst || 0);
-          const forPct  = total > 0 ? Math.round(p.votesFor / total * 100) : 0;
-          const agPct   = total > 0 ? Math.round(p.votesAgainst / total * 100) : 0;
-          return '<tr>' +
-            '<td style="color:#888;">' + p.id + '</td>' +
-            '<td><strong style="color:#e0e0e0;">' + (p.purpose||'') + '</strong><br/><span style="color:#555;font-size:0.7rem;">' + (p.description||'').slice(0,80) + (p.description?.length > 80 ? '…' : '') + '</span></td>' +
-            '<td style="color:#888;">' + (p.researcher||'').slice(0,10) + '…</td>' +
-            '<td style="color:#888;">' + (p.durationDays||'?') + 'd</td>' +
-            '<td>' + (p.votesFor||0) + ' / ' + (p.votesAgainst||0) +
-              '<div class="vote-bar"><div class="vote-for-bar" style="width:' + forPct + '%"></div><div class="vote-against-bar" style="width:' + agPct + '%"></div></div></td>' +
-            '<td><span class="tag ' + (STATUS_TAGS[p.status]||'') + '">' + (STATUS_LABELS[p.status]||'?') + '</span></td>' +
-          '</tr>';
-        }).join('');
-      } catch(e) {}
-    }
+// ── AI Ethics ──
 
-    async function fetchMembers() {
-      try {
-        const d = await fetch(API + '/members').then(r => r.json());
-        const tb = document.getElementById('memberTable');
-        if (!d.members?.length) { tb.innerHTML = '<tr><td colspan="6" style="color:#555;text-align:center;padding:20px;">No members yet — join below</td></tr>'; return; }
-        tb.innerHTML = d.members.map(m => {
-          const cid = m.storachaCid || '';
-          const cidDisplay = cid.startsWith('local:')
-            ? '<span style="color:#555;" title="Storacha auth required">local cache</span>'
-            : '<a href="https://' + cid + '.ipfs.w3s.link" target="_blank" title="View on IPFS">' + cid.slice(0,14) + '…</a>';
-          return '<tr>' +
-            '<td style="font-size:0.7rem;color:#888;">' + (m.address||'').slice(0,14) + '…</td>' +
-            '<td>' + (m.channelCount||'?') + '</td>' +
-            '<td>' + (m.sampleRate||'?') + ' Hz</td>' +
-            '<td>' + (m.deidentified ? '<span style="color:#22c55e;">Yes</span>' : '<span style="color:#f59320;">No</span>') + '</td>' +
-            '<td style="font-size:0.7rem;">' + cidDisplay + '</td>' +
-            '<td style="color:#666;font-size:0.7rem;">' + (m.joinedAt ? new Date(m.joinedAt*1000).toLocaleDateString() : '?') + '</td>' +
-          '</tr>';
-        }).join('');
-      } catch(e) {}
-    }
-
-    async function fetchEvents() {
-      try {
-        const d = await fetch(API + '/events').then(r => r.json());
-        const tb = document.getElementById('eventLog');
-        if (!d.events?.length) { tb.innerHTML = '<tr><td colspan="4" style="color:#555;text-align:center;padding:20px;">No events yet</td></tr>'; return; }
-        tb.innerHTML = [...d.events].reverse().slice(0,20).map(e =>
-          '<tr>' +
-          '<td><span class="tag tag-active">' + e.type + '</span></td>' +
-          '<td style="font-size:0.7rem;color:#888;">' + JSON.stringify(e.data||{}).slice(0,70) + '</td>' +
-          '<td style="font-size:0.7rem;"><a href="https://calibration.filfox.info/en/tx/' + e.txHash + '" target="_blank">' + (e.txHash||'').slice(0,12) + '…</a></td>' +
-          '<td style="color:#555;font-size:0.7rem;">' + (e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '') + '</td>' +
-          '</tr>'
-        ).join('');
-      } catch(e) {}
-    }
-
-    // ── AI ethics analysis ────────────────────────────────────────────────────
-
-    async function analyseProposal() {
-      const id = parseInt(document.getElementById('aiProposalId').value);
-      const el = document.getElementById('aiResult');
-      if (isNaN(id)) { show('aiResult', 'Enter a proposal ID first.', 'error'); return; }
-      el.style.display = 'block'; el.className = 'result info'; el.textContent = 'Sending to Venice AI (zero data retention)…';
-      try {
-        const r = await fetch(API + '/cognition/analyze-proposal', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ proposalId: id }),
-        });
-        const d = await r.json();
-        if (!r.ok) { show('aiResult', d, 'error'); return; }
-        const a = d.analysis;
-        if (!a) { show('aiResult', d, 'info'); return; }
-        const riskClass = 'risk-' + (a.riskLevel || 'medium');
-        el.className = 'result success';
-        el.innerHTML =
-          '<strong style="color:#00d4aa;">Ethics Score: ' + a.ethicsScore + '/100</strong>  ' +
-          'Risk: <span class="' + riskClass + '">' + (a.riskLevel||'').toUpperCase() + '</span>  ' +
-          'Recommendation: <strong>' + (a.recommendation||'').toUpperCase() + '</strong>\\n\\n' +
-          (a.reasoning ? '<em style="color:#aaa;">' + a.reasoning + '</em>\\n\\n' : '') +
-          (a.concerns?.length  ? 'Concerns:\\n' + a.concerns.map(c => '  • ' + c).join('\\n') + '\\n\\n' : '') +
-          (a.redFlags?.length  ? 'Red Flags:\\n' + a.redFlags.map(f => '  ⚠ ' + f).join('\\n') + '\\n\\n' : '') +
-          (a.strengths?.length ? 'Strengths:\\n' + a.strengths.map(s => '  ✓ ' + s).join('\\n') + '\\n\\n' : '') +
-          'Neurorights alignment:\\n' +
-          Object.entries(a.alignmentScore||{}).map(([k,v]) => '  ' + k + ': ' + v + '/100').join('\\n') +
-          '\\n\\nModel: ' + d.model;
-      } catch(e) { show('aiResult', e.message, 'error'); }
-    }
-
-    // ── Write operations ──────────────────────────────────────────────────────
-
-    async function joinCoop() {
-      try {
-        const r = await fetch(API + '/join', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ privateKey: document.getElementById('joinKey').value }),
-        });
-        show('joinResult', await r.json()); refresh();
-      } catch(e) { show('joinResult', e.message, 'error'); }
-    }
-
-    async function submitProposal() {
-      try {
-        const r = await fetch(API + '/proposal', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            privateKey:  document.getElementById('propKey').value,
-            purpose:     document.getElementById('propPurpose').value,
-            description: document.getElementById('propDesc').value,
-            durationDays: parseInt(document.getElementById('propDuration').value),
-          }),
-        });
-        show('propResult', await r.json()); refresh();
-      } catch(e) { show('propResult', e.message, 'error'); }
-    }
-
-    async function castVote(support) {
-      try {
-        const r = await fetch(API + '/vote', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            privateKey: document.getElementById('voteKey').value,
-            proposalId: parseInt(document.getElementById('voteId').value),
-            support,
-          }),
-        });
-        show('voteResult', await r.json()); refresh();
-      } catch(e) { show('voteResult', e.message, 'error'); }
-    }
-
-    async function execProposal() {
-      try {
-        const r = await fetch(API + '/execute', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            privateKey: document.getElementById('execKey').value,
-            proposalId: parseInt(document.getElementById('execId').value),
-          }),
-        });
-        show('execResult', await r.json()); refresh();
-      } catch(e) { show('execResult', e.message, 'error'); }
-    }
-
-    // ── Researcher data access (proper challenge/sign flow) ───────────────────
-
-    let _challenge = null;
-
-    async function getChallenge() {
-      const id   = document.getElementById('decryptId').value;
-      const addr = document.getElementById('decryptAddr').value;
-      if (!id || !addr) { show('decryptResult', 'Enter proposal ID and researcher address first.', 'error'); return; }
-      try {
-        const d = await fetch(API + '/challenge/' + id).then(r => r.json());
-        _challenge = d;
-        document.getElementById('challengeBox').style.display = 'block';
-        document.getElementById('challengeMsg').textContent = 'Challenge: ' + d.message + '\\n\\nSign this message with your private key, then click Sign & Access.';
-        document.getElementById('decryptResult').style.display = 'none';
-      } catch(e) { show('decryptResult', e.message, 'error'); }
-    }
-
-    async function signAndAccess() {
-      if (!_challenge) { show('decryptResult', 'Get a challenge first.', 'error'); return; }
-      const proposalId = parseInt(document.getElementById('decryptId').value);
-      const researcherAddress = document.getElementById('decryptAddr').value;
-      const privateKey = document.getElementById('researcherKey').value;
-      if (!privateKey) { show('decryptResult', 'Enter your private key to sign the challenge.', 'error'); return; }
-
-      // Sign via server helper (avoids shipping ethers.js to the browser)
-      try {
-        const sigResp = await fetch(API + '/sign-challenge', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ privateKey, message: _challenge.message }),
-        });
-        const sigData = await sigResp.json();
-        if (!sigResp.ok) { show('decryptResult', sigData, 'error'); return; }
-
-        const r = await fetch(API + '/decrypt', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            proposalId,
-            researcherAddress,
-            signature: sigData.signature,
-            message:   _challenge.message,
-          }),
-        });
-        show('decryptResult', await r.json());
-        document.getElementById('challengeBox').style.display = 'none';
-        _challenge = null;
-      } catch(e) { show('decryptResult', e.message, 'error'); }
-    }
-
-    // ── Live demo runner ──────────────────────────────────────────────────────
-
-    async function runDemo() {
-      const btn = document.getElementById('demoBtn');
-      const out = document.getElementById('demoResult');
-      btn.disabled = true;
-      btn.textContent = 'Running…';
-      out.style.display = 'block';
-      out.className = 'result info';
-      out.textContent = 'Submitting transactions to Filecoin Calibration…\\nThis takes ~60s (one block per step). Please wait.';
-
-      try {
-        const r = await fetch(API + '/demo/run', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' });
-        const d = await r.json();
-
-        if (!r.ok || !d.success) {
-          out.className = 'result error';
-          out.textContent = 'Demo failed:\\n' + (d.error || JSON.stringify(d, null, 2));
-          return;
-        }
-
-        out.className = 'result success';
-        let txt = 'Demo complete — ' + d.steps.filter(s => s.status === 'ok').length + ' steps succeeded\\n\\n';
-
-        for (const s of d.steps) {
-          const icon = s.status === 'ok' ? '✓' : s.status === 'skipped' ? '→' : '✗';
-          const color = s.status === 'ok' ? '#22c55e' : s.status === 'skipped' ? '#888' : '#ef4444';
-          txt += icon + ' Step ' + s.step + ': ' + s.name + '\\n';
-          txt += '   ' + s.detail + '\\n';
-          if (s.txHash) txt += '   Tx: ' + s.txHash + '\\n';
-          txt += '\\n';
-        }
-
-        if (d.summary) {
-          const sm = d.summary;
-          txt += '─────────────────────────────────\\n';
-          txt += 'Members:   ' + sm.members + '\\n';
-          txt += 'Proposals: ' + sm.proposals + '\\n';
-          txt += 'Outcome:   ' + (sm.outcome || '?') + '\\n';
-          txt += 'Contract:  ' + sm.contract + '\\n';
-          txt += 'Explorer:  ' + sm.contractExplorer + '\\n\\n';
-          txt += 'Stack:\\n';
-          for (const [k, v] of Object.entries(sm.stack || d.stack || {})) {
-            txt += '  ' + k + ': ' + v + '\\n';
-          }
-        }
-
-        out.textContent = txt;
-        refresh(); // re-fetch live tables
-      } catch(e) {
-        out.className = 'result error';
-        out.textContent = 'Demo error: ' + e.message;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Run Full Lifecycle Demo';
+async function analyseEthics() {
+  const id = parseInt(document.getElementById('aiId').value);
+  if (isNaN(id)) { showResp('aiResp','Enter a proposal number first.',false); return; }
+  showResp('aiResp','Sending to Venice AI (zero data retention)...','loading');
+  try {
+    const r = await fetch(API+'/cognition/analyze-proposal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({proposalId:id})});
+    const d = await r.json();
+    if (!r.ok || !d.analysis) { showResp('aiResp',d,false); return; }
+    const a = d.analysis;
+    const sc = a.ethicsScore >= 70 ? 'low' : a.ethicsScore >= 40 ? 'med' : 'high';
+    const rc = a.recommendation || 'scrutinize';
+    let html = '<div class="ai-result"><span class="ai-score '+sc+'">'+a.ethicsScore+'</span><span style="color:var(--dim);font-size:0.85rem;">/100</span>';
+    html += '<span class="ai-rec '+rc+'">'+rc.toUpperCase()+'</span>';
+    html += '<div class="ai-detail">'+esc(a.reasoning||'')+'</div>';
+    if (a.concerns?.length) html += '<div class="ai-detail"><strong style="color:#f59320;">Concerns:</strong><ul class="ai-list">'+a.concerns.map(c=>'<li>'+esc(c)+'</li>').join('')+'</ul></div>';
+    if (a.redFlags?.length) html += '<div class="ai-detail"><strong style="color:#ef4444;">Red Flags:</strong><ul class="ai-list">'+a.redFlags.map(f=>'<li>'+esc(f)+'</li>').join('')+'</ul></div>';
+    if (a.strengths?.length) html += '<div class="ai-detail"><strong style="color:#22c55e;">Strengths:</strong><ul class="ai-list">'+a.strengths.map(s=>'<li>'+esc(s)+'</li>').join('')+'</ul></div>';
+    if (a.alignmentScore) {
+      html += '<div class="align-grid">';
+      for (const [k,v] of Object.entries(a.alignmentScore)) {
+        html += '<div class="align-item">'+k.replace(/([A-Z])/g,' $1').trim()+' <strong>'+v+'</strong><div class="align-bar"><div class="align-fill" style="width:'+v+'%"></div></div></div>';
       }
+      html += '</div>';
     }
+    html += '<div style="color:var(--dim);font-size:0.7rem;margin-top:12px;">Model: '+esc(d.model||'')+'</div></div>';
+    const el = document.getElementById('aiResp');
+    el.className = 'resp ok'; el.innerHTML = html;
+  } catch(e) { showResp('aiResp',e.message,false); }
+}
 
-    function refresh() { fetchHealth(); fetchProposals(); fetchMembers(); fetchEvents(); }
-    refresh();
-    setInterval(refresh, 10000);
-  </script>
+// ── Band Power ──
+
+async function runBandPower() {
+  showResp('bandResp','Processing 64-channel EEG (160 Hz, 61s)...','loading');
+  try {
+    const r = await fetch(API+'/cognition/eeg-bands',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    const d = await r.json();
+    if (!d.success) { showResp('bandResp',d,false); return; }
+    const b = d.bandPower;
+    const rp = b.relativePowerPercent||{};
+    const bands = ['delta','theta','alpha','beta','gamma'];
+    const colors = {delta:'#3b82f6',theta:'#22c55e',alpha:'#f59320',beta:'#ef4444',gamma:'#a78bfa'};
+    let html = '<div class="ai-result"><strong style="color:var(--accent);">Dominant band: '+b.dominantBand+'</strong>';
+    html += '<div class="ai-detail">'+esc(b.interpretation||'')+'</div>';
+    html += '<div style="display:flex;gap:8px;margin-top:14px;align-items:flex-end;height:80px;">';
+    for (const band of bands) {
+      const pct = rp[band]||0;
+      html += '<div style="flex:1;text-align:center;"><div style="background:'+colors[band]+';height:'+Math.max(4,pct*0.8)+'px;border-radius:3px 3px 0 0;margin:0 auto;width:80%;"></div><div style="font-size:0.65rem;color:var(--dim);margin-top:4px;">'+band+'<br/>'+pct+'%</div></div>';
+    }
+    html += '</div>';
+    html += '<div style="color:var(--dim);font-size:0.7rem;margin-top:10px;">Source: '+esc(d.source||'')+'</div>';
+    html += '</div>';
+    const el = document.getElementById('bandResp');
+    el.className = 'resp ok'; el.innerHTML = html;
+  } catch(e) { showResp('bandResp',e.message,false); }
+}
+
+// ── Write ops ──
+
+async function post(url, body) {
+  const r = await fetch(API+url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  return {data: await r.json(), ok: r.ok};
+}
+
+function fmtResult(d) {
+  let html = '';
+  if (d.txHash) html += '<span class="label">Transaction confirmed</span>';
+  if (d.explorerUrl) html += '<div class="field"><a href="'+d.explorerUrl+'" target="_blank" class="tx-link">View on Filfox &rarr;</a></div>';
+  if (d.member) html += '<div class="field">Member: '+fmtAddr(d.member)+'</div>';
+  if (d.proposalId !== undefined) html += '<div class="field">Proposal #'+d.proposalId+'</div>';
+  if (d.purpose) html += '<div class="field">Purpose: '+esc(d.purpose)+'</div>';
+  if (d.voter) html += '<div class="field">Voter: '+fmtAddr(d.voter)+'</div>';
+  if (d.support !== undefined) html += '<div class="field">Vote: '+(d.support?'<span style="color:#22c55e;">FOR</span>':'<span style="color:#ef4444;">AGAINST</span>')+'</div>';
+  if (d.currentTally) html += '<div class="field">Tally: '+d.currentTally.for+' for / '+d.currentTally.against+' against</div>';
+  if (d.outcome) html += '<div class="field">Outcome: <strong>'+d.outcome+'</strong></div>';
+  if (d.message) html += '<div class="field" style="color:var(--accent);">'+esc(d.message)+'</div>';
+  return html || '<pre>'+esc(JSON.stringify(d,null,2))+'</pre>';
+}
+
+async function doJoin() {
+  const key = document.getElementById('joinKey').value;
+  if (!key) { showResp('joinResp','Enter a private key to join.',false); return; }
+  showResp('joinResp','Submitting to Filecoin... (takes ~30s)','loading');
+  try {
+    const {data,ok} = await post('/join',{privateKey:key});
+    if (ok && data.success) { showResp('joinResp',fmtResult(data),true); refresh(); }
+    else showResp('joinResp',data,false);
+  } catch(e) { showResp('joinResp',e.message,false); }
+}
+
+async function doPropose() {
+  const key = document.getElementById('propKey').value;
+  const purpose = document.getElementById('propPurpose').value;
+  const desc = document.getElementById('propDesc').value;
+  const days = parseInt(document.getElementById('propDays').value);
+  if (!key||!purpose) { showResp('propResp','Fill in all fields.',false); return; }
+  showResp('propResp','Submitting proposal to Filecoin...','loading');
+  try {
+    const {data,ok} = await post('/proposal',{privateKey:key,purpose,description:desc,durationDays:days});
+    if (ok && data.success) { showResp('propResp',fmtResult(data),true); refresh(); }
+    else showResp('propResp',data,false);
+  } catch(e) { showResp('propResp',e.message,false); }
+}
+
+async function doVote(support) {
+  const key = document.getElementById('voteKey').value;
+  const id = parseInt(document.getElementById('voteId').value);
+  if (!key||isNaN(id)) { showResp('voteResp','Enter key and proposal number.',false); return; }
+  showResp('voteResp','Casting vote on Filecoin...','loading');
+  try {
+    const {data,ok} = await post('/vote',{privateKey:key,proposalId:id,support});
+    if (ok && data.success) { showResp('voteResp',fmtResult(data),true); refresh(); }
+    else showResp('voteResp',data,false);
+  } catch(e) { showResp('voteResp',e.message,false); }
+}
+
+async function doExec() {
+  const key = document.getElementById('execKey').value;
+  const id = parseInt(document.getElementById('execId').value);
+  if (!key||isNaN(id)) { showResp('execResp','Enter key and proposal number.',false); return; }
+  showResp('execResp','Executing proposal...','loading');
+  try {
+    const {data,ok} = await post('/execute',{privateKey:key,proposalId:id});
+    if (ok && data.success) { showResp('execResp',fmtResult(data),true); refresh(); }
+    else showResp('execResp',data,false);
+  } catch(e) { showResp('execResp',e.message,false); }
+}
+
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+refresh();
+setInterval(refresh, 10000);
+</script>
 </body>
 </html>`;
 }
