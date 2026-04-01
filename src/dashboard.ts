@@ -305,7 +305,7 @@ async function refresh() {
 
 async function fetchProposals() {
   try {
-    const d = await fetch(API+'/proposals').then(r=>r.json());
+    const d = await fetch(API+'/proposals?limit=50').then(r=>r.json());
     const tb = document.getElementById('proposalTable');
     if (!d.proposals?.length) { tb.innerHTML='<tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">No proposals yet</td></tr>'; return; }
     // Hide expired proposals with 0 votes (testing noise), sort latest first

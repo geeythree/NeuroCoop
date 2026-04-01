@@ -625,12 +625,21 @@ async function main() {
 
   // --- View Endpoints ---
 
-  server.get('/proposals', async (_req, reply) => {
+  server.get<{ Querystring: { limit?: string; offset?: string } }>('/proposals', async (req, reply) => {
     if (!requireContract(reply)) return;
     const count = await coop!.getProposalCount();
+    const limit = Math.min(parseInt(req.query.limit || '50'), 100);
+    const offset = parseInt(req.query.offset || '0');
+    const start = Math.max(0, offset);
+    const end = Math.min(count, start + limit);
+    // Fetch in parallel batches of 10
     const proposals = [];
-    for (let i = 0; i < count; i++) {
-      proposals.push(await coop!.getProposal(i));
+    for (let batch = start; batch < end; batch += 10) {
+      const batchEnd = Math.min(batch + 10, end);
+      const batchResults = await Promise.all(
+        Array.from({ length: batchEnd - batch }, (_, i) => coop!.getProposal(batch + i).catch(() => null))
+      );
+      proposals.push(...batchResults.filter(Boolean));
     }
     return { proposals, total: count };
   });
@@ -1041,8 +1050,14 @@ async function main() {
       let rejectedCount = 0;
       let totalVotes = 0;
 
-      for (let i = 0; i < proposalCount; i++) {
-        const p = coop ? await coop.getProposal(i).catch(() => null) : null;
+      // Sample last 30 proposals for governance stats (avoid O(n) RPC calls)
+      const sampleStart = Math.max(0, proposalCount - 30);
+      const sampleProposals = await Promise.all(
+        Array.from({ length: proposalCount - sampleStart }, (_, i) =>
+          coop ? coop.getProposal(sampleStart + i).catch(() => null) : null
+        )
+      );
+      for (const p of sampleProposals) {
         if (!p) continue;
         if (p.status === 2) approvedCount++;
         if (p.status === 1) rejectedCount++;
