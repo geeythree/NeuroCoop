@@ -213,20 +213,32 @@ Raw neural signals are **never sent to the AI** — only anonymized statistical 
 
 ### 3. Governance Health — `GET /cognition/governance-health`
 
-Periodic AI assessment of the cooperative's democratic health:
+Live AI assessment of the cooperative's democratic health. Venice AI analyses participation rates, concentration risk, and approval bias — flagging governance problems that members might not notice themselves.
+
+**Live output from the deployed cooperative (5 members, 8 proposals):**
 
 ```json
 {
+  "cooperative": { "memberCount": 5, "proposalCount": 8, "approvedCount": 1, "rejectedCount": 0 },
   "health": {
-    "healthScore": 78,
-    "participationRate": 72,
-    "concentrationRisk": "Moderate — some members vote on every proposal while others have never voted",
-    "approvalBias": "Approval rate within healthy range (54%)",
-    "recommendations": ["Consider delegation mechanism for inactive members", "Add proposal amendment period"],
-    "warnings": []
-  }
+    "healthScore": 20,
+    "participationRate": 15,
+    "concentrationRisk": "High risk due to low average votes per proposal, indicating potential for single-member dominance",
+    "approvalBias": "Suspiciously low, may indicate lack of confidence in proposals or ineffective proposal process",
+    "recommendations": [
+      "Increase member engagement through regular meetings and clear proposal communication",
+      "Review and refine proposal submission and voting processes"
+    ],
+    "warnings": [
+      "Low participation rate may lead to plutocracy drift",
+      "Lack of rejected proposals may indicate rubber-stamping or lack of diverse perspectives"
+    ]
+  },
+  "model": "llama-3.3-70b (Venice AI — zero data retention)"
 }
 ```
+
+This is the Cognition Engine doing its job: detecting governance risks on real on-chain data, not synthetic examples. The low participation warning is correct — the cooperative needs more engaged voters, and Venice AI is the one raising the alarm.
 
 ---
 
