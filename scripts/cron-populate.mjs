@@ -104,11 +104,11 @@ async function run() {
     }
   }
 
-  // Try executing any older proposals that might have passed voting period
-  for (let i = Math.max(0, pc - 5); i < pc; i++) {
+  // Execute ALL older proposals that have passed voting period
+  for (let i = Math.max(0, pc - 30); i < pc + added; i++) {
     try {
       await send(wallets[0], 'executeProposal', [BigInt(i)]);
-      console.log(`[cron] Executed older #${i}`);
+      console.log(`[cron] Executed #${i}`);
     } catch {}
   }
 
