@@ -306,7 +306,10 @@ async function fetchProposals() {
     const d = await fetch(API+'/proposals').then(r=>r.json());
     const tb = document.getElementById('proposalTable');
     if (!d.proposals?.length) { tb.innerHTML='<tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">No proposals yet</td></tr>'; return; }
-    tb.innerHTML = d.proposals.map(p => {
+    // Hide expired proposals with 0 votes (testing noise)
+    const meaningful = d.proposals.filter(p => p.status !== 3 || (p.votesFor||0)+(p.votesAgainst||0) > 0);
+    if (!meaningful.length) { tb.innerHTML='<tr><td colspan="7" style="color:var(--dim);text-align:center;padding:20px;">No proposals yet</td></tr>'; return; }
+    tb.innerHTML = meaningful.map(p => {
       const t = (p.votesFor||0)+(p.votesAgainst||0);
       const fp = t>0 ? Math.round(p.votesFor/t*100) : 0;
       const ap = t>0 ? Math.round(p.votesAgainst/t*100) : 0;
