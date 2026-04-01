@@ -7,8 +7,8 @@ import { createConfig } from './config.js';
 import { CoopClient } from './coop.js';
 import { getPublicKey, encryptNeuroData, decryptNeuroData, createAccessChallenge, verifyAccessSignature, signAccessChallenge } from './crypto.js';
 import { Store } from './db.js';
-import { initStoracha, uploadEncrypted, downloadByCid, verifyCid, computeDataHash, getGatewayUrl } from './storacha.js';
-import { parseEegMetadata, deidentifyEeg, generateDataSummary, extractBandPower } from './eeg.js';
+import { initStoracha, uploadEncrypted, downloadByCid, verifyCid, computeDataHash, getGatewayUrl, createConsentDelegation } from './storacha.js';
+import { parseEegMetadata, deidentifyEeg, generateDataSummary, extractBandPower, parseEdf, loadDefaultEdf, extractBandPowerFromEdf } from './eeg.js';
 import { generateCoopReceipt } from './receipt.js';
 import { getDashboardHtml } from './dashboard.js';
 import { DataCategory, PROPOSAL_STATUS_LABELS } from './types.js';
@@ -895,7 +895,7 @@ async function main() {
    * This is the "Computation" pillar applied to the "Cognition" dimension:
    * actual neural signal processing to extract cognitive state signatures.
    */
-  server.post<{ Body: { eegData?: string; memberAddress?: string } }>(
+  server.post<{ Body: { eegData?: string; memberAddress?: string; format?: string } }>(
     '/cognition/eeg-bands',
     {
       schema: {
@@ -904,24 +904,33 @@ async function main() {
           properties: {
             eegData: { type: 'string', description: 'Raw EEG CSV (omit to use sample data)' },
             memberAddress: { type: 'string', description: 'Use data from a specific registered member' },
+            format: { type: 'string', description: 'Input format: "csv" or "edf" (default: auto-detect, prefers EDF)' },
           },
         },
       },
     },
     async (req, reply) => {
       try {
-        let csvData: string;
+        let bands: ReturnType<typeof extractBandPower>;
+        let source = 'sample-csv';
 
         if (req.body.eegData) {
-          csvData = req.body.eegData;
-        } else if (req.body.memberAddress) {
-          // For demo: use sample data (real data is encrypted)
-          csvData = readFileSync(new URL('../sample-data/sample-eeg.csv', import.meta.url), 'utf-8');
+          // User-provided CSV data
+          bands = extractBandPower(req.body.eegData);
+          source = 'user-csv';
         } else {
-          csvData = readFileSync(new URL('../sample-data/sample-eeg.csv', import.meta.url), 'utf-8');
+          // Try real EDF files first (PhysioNet EEGMMIDB — 64ch, 160Hz, clinical EEG)
+          const edf = loadDefaultEdf();
+          if (edf) {
+            bands = extractBandPowerFromEdf(edf);
+            source = `edf:${edf.labels.length}ch/${edf.sampleRate}Hz/${edf.duration}s (PhysioNet EEGMMIDB, CC0)`;
+          } else {
+            // Fallback to synthetic CSV
+            const csvData = readFileSync(new URL('../sample-data/sample-eeg.csv', import.meta.url), 'utf-8');
+            bands = extractBandPower(csvData);
+            source = 'sample-csv';
+          }
         }
-
-        const bands = extractBandPower(csvData);
 
         // Build a simple relative power breakdown (percentages)
         const total = bands.delta + bands.theta + bands.alpha + bands.beta + bands.gamma;
@@ -953,6 +962,7 @@ async function main() {
             sampleCount: bands.sampleCount,
           },
           perChannel: bands.perChannel,
+          source,
           method: 'Multi-scale successive difference analysis (RMS of x[t]-x[t-s], no external API)',
           note: 'Band power is estimated from de-identified data. Raw signals are not stored or transmitted.',
         };
@@ -1005,6 +1015,144 @@ async function main() {
       return errorResponse(err instanceof Error ? err.message : String(err));
     }
   });
+
+  /**
+   * POST /storacha/delegate — Issue a W3C UCAN delegation to an approved researcher.
+   *
+   * This is the deep Storacha integration: instead of just serving data, we issue
+   * a cryptographically signed, time-bounded capability proof that the cooperative's
+   * Storacha space has authorized the researcher. The delegation:
+   *   - Is signed by the cooperative's space principal (unforgeable)
+   *   - Expires at the proposal access deadline (matches on-chain enforcement)
+   *   - Can be presented as a verifiable consent credential to institutions
+   *   - Is portable — the researcher can verify it offline without calling our server
+   *
+   * Flow: GET /challenge/:proposalId → sign → POST /storacha/delegate
+   */
+  server.post<{
+    Body: {
+      proposalId: number;
+      researcherAddress: string;
+      researcherDid: string;
+      signature: string;
+      message: string;
+    };
+  }>('/storacha/delegate', {
+    schema: {
+      body: {
+        type: 'object',
+        required: ['proposalId', 'researcherAddress', 'researcherDid', 'signature', 'message'],
+        properties: {
+          proposalId: { type: 'number' },
+          researcherAddress: { type: 'string' },
+          researcherDid: { type: 'string', description: 'W3C DID of the researcher (e.g. did:key:z6Mk...)' },
+          signature: { type: 'string' },
+          message: { type: 'string' },
+        },
+      },
+    },
+  }, async (req, reply) => {
+    if (!requireContract(reply)) return;
+    if (!storachaClient) {
+      reply.code(503);
+      return errorResponse('Storacha not initialised — cannot issue UCAN delegation. Run: npx @storacha/cli login <email>', {
+        setup: 'https://storacha.network/docs/w3cli',
+      });
+    }
+
+    try {
+      const { proposalId, researcherAddress, researcherDid, signature, message } = req.body;
+
+      // Identity verification — same pattern as /decrypt
+      const { valid, recoveredAddress } = verifyAccessSignature(signature, message);
+      if (!valid || recoveredAddress.toLowerCase() !== researcherAddress.toLowerCase()) {
+        reply.code(403);
+        return errorResponse('Signature verification failed. Get a challenge from GET /challenge/:proposalId.');
+      }
+
+      const proposal = await coop!.getProposal(proposalId);
+      if (proposal.researcher.toLowerCase() !== recoveredAddress.toLowerCase()) {
+        reply.code(403);
+        return errorResponse('Researcher address does not match proposal researcher', { proposalId });
+      }
+
+      const hasAccess = await coop!.hasAccess(proposalId, recoveredAddress);
+      if (!hasAccess) {
+        reply.code(403);
+        return errorResponse(
+          proposal.status === 1 ? 'Proposal was rejected.' : 'Proposal not approved or access expired.',
+          { proposalId, status: PROPOSAL_STATUS_LABELS[proposal.status] }
+        );
+      }
+
+      const delegation = await createConsentDelegation(
+        storachaClient,
+        researcherDid,
+        proposalId,
+        config.coopAddress,
+        proposal.durationDays
+      );
+
+      store.logAudit({
+        actor: recoveredAddress,
+        action: 'UCAN_DELEGATION_ISSUED',
+        target: `proposal:${proposalId}`,
+        details: `did:${researcherDid}, expires:${delegation.expiresAt}`,
+      });
+
+      return {
+        success: true,
+        proposalId,
+        delegation,
+        cooperative: config.coopAddress,
+        onChainVerification: `${config.filecoinExplorerUrl.replace('/tx', '/address')}/${config.coopAddress}`,
+        instructions: 'Decode the base64 archive to get the portable UCAN delegation CAR. Present it as proof of cooperative consent.',
+      };
+    } catch (err) {
+      reply.code(500);
+      return errorResponse(err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  /**
+   * POST /expire — Expire a proposal that has passed its voting deadline.
+   * Anyone can call this — keeps activeProposalCount accurate without O(n) scans.
+   */
+  server.post<{ Body: { address?: string; nonce?: string; signature?: string; privateKey?: string; proposalId: number } }>(
+    '/expire',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['proposalId'],
+          properties: {
+            address: { type: 'string' },
+            nonce: { type: 'string' },
+            signature: { type: 'string' },
+            privateKey: { type: 'string' },
+            proposalId: { type: 'number' },
+          },
+        },
+      },
+    },
+    async (req, reply) => {
+      if (!requireContract(reply)) return;
+      try {
+        const callerAddress = await resolveWallet(req.body).catch(e => { throw Object.assign(e, { status: 401 }); });
+        const txHash = await coop!.expireProposal(callerAddress, req.body.proposalId);
+        return {
+          success: true,
+          proposalId: req.body.proposalId,
+          outcome: 'EXPIRED',
+          txHash,
+          explorerUrl: `${config.filecoinExplorerUrl}/${txHash}`,
+        };
+      } catch (err) {
+        reply.code(500);
+        return errorResponse(err instanceof Error ? err.message : String(err));
+      }
+    }
+  );
 
   // --- Start ---
   await server.listen({ port: config.port, host: '0.0.0.0' });

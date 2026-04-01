@@ -28,7 +28,270 @@
  * This prototype technique makes exact value recovery harder but provides no
  * mathematically proven privacy bound.
  */
+import { readFileSync } from 'fs';
 import type { EegMetadata } from './types.js';
+
+// --- EDF (European Data Format) Parser ---
+// Spec: https://www.edfplus.info/specs/edf.html
+// Supports EDF and EDF+ (continuous). Used by PhysioNet, OpenNeuro, etc.
+
+export interface EdfFile {
+  header: EdfHeader;
+  /** Parsed channel data as physical values (μV). channels[channelIndex][sampleIndex] */
+  channels: Float64Array[];
+  /** Channel labels (e.g., "Fc5.", "C3..", "Oz..") */
+  labels: string[];
+  /** Sample rate in Hz (from first non-annotation channel) */
+  sampleRate: number;
+  /** Total samples per channel */
+  totalSamples: number;
+  /** Recording duration in seconds */
+  duration: number;
+}
+
+export interface EdfHeader {
+  version: string;
+  patientId: string;
+  recordingId: string;
+  startDate: string;
+  startTime: string;
+  headerBytes: number;
+  reserved: string;
+  numDataRecords: number;
+  dataRecordDuration: number;
+  numSignals: number;
+  signals: EdfSignalHeader[];
+}
+
+export interface EdfSignalHeader {
+  label: string;
+  transducerType: string;
+  physicalDimension: string;
+  physicalMin: number;
+  physicalMax: number;
+  digitalMin: number;
+  digitalMax: number;
+  prefiltering: string;
+  numSamples: number;
+  reserved: string;
+}
+
+/**
+ * Parse an EDF/EDF+ file from a Buffer or Uint8Array.
+ * Returns channel data as physical values (typically μV for EEG).
+ *
+ * Source: PhysioNet EEGMMIDB — 64-channel, 160 Hz, real clinical EEG.
+ * Format: 256-byte fixed header + ns*256-byte signal headers + 16-bit LE data records.
+ */
+export function parseEdf(buffer: Buffer | Uint8Array): EdfFile {
+  const buf = Buffer.from(buffer);
+  const ns = parseInt(readField(buf, 252, 4));
+
+  // Parse fixed header
+  const header: EdfHeader = {
+    version: readField(buf, 0, 8),
+    patientId: readField(buf, 8, 80),
+    recordingId: readField(buf, 88, 80),
+    startDate: readField(buf, 168, 8),
+    startTime: readField(buf, 176, 8),
+    headerBytes: parseInt(readField(buf, 184, 8)),
+    reserved: readField(buf, 192, 44),
+    numDataRecords: parseInt(readField(buf, 236, 8)),
+    dataRecordDuration: parseFloat(readField(buf, 244, 8)),
+    numSignals: ns,
+    signals: [],
+  };
+
+  // Parse per-signal headers (each field is stored for ALL signals consecutively)
+  const base = 256;
+  const offsets = {
+    label: base,
+    transducer: base + ns * 16,
+    physDim: base + ns * 16 + ns * 80,
+    physMin: base + ns * 16 + ns * 80 + ns * 8,
+    physMax: base + ns * 16 + ns * 80 + ns * 16,
+    digMin: base + ns * 16 + ns * 80 + ns * 24,
+    digMax: base + ns * 16 + ns * 80 + ns * 32,
+    prefilt: base + ns * 16 + ns * 80 + ns * 40,
+    numSamp: base + ns * 16 + ns * 80 + ns * 120,
+    reserved: base + ns * 16 + ns * 80 + ns * 128,
+  };
+
+  for (let i = 0; i < ns; i++) {
+    header.signals.push({
+      label: readField(buf, offsets.label + i * 16, 16),
+      transducerType: readField(buf, offsets.transducer + i * 80, 80),
+      physicalDimension: readField(buf, offsets.physDim + i * 8, 8),
+      physicalMin: parseFloat(readField(buf, offsets.physMin + i * 8, 8)),
+      physicalMax: parseFloat(readField(buf, offsets.physMax + i * 8, 8)),
+      digitalMin: parseInt(readField(buf, offsets.digMin + i * 8, 8)),
+      digitalMax: parseInt(readField(buf, offsets.digMax + i * 8, 8)),
+      prefiltering: readField(buf, offsets.prefilt + i * 80, 80),
+      numSamples: parseInt(readField(buf, offsets.numSamp + i * 8, 8)),
+      reserved: readField(buf, offsets.reserved + i * 32, 32),
+    });
+  }
+
+  // Identify EEG channels (skip annotation channels)
+  const eegIndices: number[] = [];
+  const labels: string[] = [];
+  for (let i = 0; i < ns; i++) {
+    if (header.signals[i].label === 'EDF Annotations') continue;
+    eegIndices.push(i);
+    labels.push(header.signals[i].label);
+  }
+
+  // Parse data records — 16-bit signed LE integers, interleaved by channel per record
+  const dataOffset = header.headerBytes;
+  const numRecords = header.numDataRecords;
+
+  // Pre-compute gain/offset for digital→physical conversion
+  const gains = header.signals.map(s =>
+    (s.physicalMax - s.physicalMin) / (s.digitalMax - s.digitalMin)
+  );
+  const phyOffsets = header.signals.map((s, i) =>
+    s.physicalMax - gains[i] * s.digitalMax
+  );
+
+  // Allocate output arrays
+  const totalSamplesPerChannel = numRecords * (header.signals[eegIndices[0]]?.numSamples ?? 0);
+  const channels: Float64Array[] = eegIndices.map(() => new Float64Array(totalSamplesPerChannel));
+
+  // Compute record size in samples (all signals)
+  const samplesPerRecord = header.signals.map(s => s.numSamples);
+  const recordSizeBytes = samplesPerRecord.reduce((a, b) => a + b, 0) * 2;
+
+  for (let rec = 0; rec < numRecords; rec++) {
+    const recStart = dataOffset + rec * recordSizeBytes;
+    let sampleOffset = 0;
+
+    for (let sig = 0; sig < ns; sig++) {
+      const nSamp = samplesPerRecord[sig];
+      const eegIdx = eegIndices.indexOf(sig);
+
+      for (let s = 0; s < nSamp; s++) {
+        const bytePos = recStart + (sampleOffset + s) * 2;
+        const digitalVal = buf.readInt16LE(bytePos);
+
+        if (eegIdx >= 0) {
+          const destIdx = rec * nSamp + s;
+          channels[eegIdx][destIdx] = digitalVal * gains[sig] + phyOffsets[sig];
+        }
+      }
+      sampleOffset += nSamp;
+    }
+  }
+
+  const sampleRate = eegIndices.length > 0
+    ? header.signals[eegIndices[0]].numSamples / header.dataRecordDuration
+    : 0;
+
+  return {
+    header,
+    channels,
+    labels,
+    sampleRate,
+    totalSamples: totalSamplesPerChannel,
+    duration: numRecords * header.dataRecordDuration,
+  };
+}
+
+function readField(buf: Buffer, offset: number, length: number): string {
+  return buf.subarray(offset, offset + length).toString('ascii').trim();
+}
+
+/**
+ * Load a default EDF file from sample-data/ for demo purposes.
+ * Uses real clinical EEG from PhysioNet EEGMMIDB (CC0 license).
+ */
+export function loadDefaultEdf(): EdfFile | null {
+  const paths = [
+    'sample-data/S001R01.edf',   // eyes-open resting state
+    'sample-data/S001R02.edf',   // eyes-closed resting state
+  ];
+  for (const p of paths) {
+    try {
+      const buf = readFileSync(p);
+      return parseEdf(buf);
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
+/**
+ * Extract band power from an EDF file (parsed channels + sample rate).
+ * Same multi-scale successive difference method as the CSV version,
+ * but operates on pre-parsed Float64Array channels.
+ */
+export function extractBandPowerFromEdf(edf: EdfFile): BandPowerResult {
+  if (edf.channels.length === 0 || edf.totalSamples < 10) {
+    return emptyBandResult(edf.channels.length, edf.totalSamples);
+  }
+
+  const sampleRate = edf.sampleRate;
+  const scales = {
+    delta: Math.max(1, Math.round(sampleRate / (2 * 2))),
+    theta: Math.max(1, Math.round(sampleRate / (2 * 6))),
+    alpha: Math.max(1, Math.round(sampleRate / (2 * 10))),
+    beta:  Math.max(1, Math.round(sampleRate / (2 * 20))),
+    gamma: Math.max(1, Math.round(sampleRate / (2 * 50))),
+  };
+
+  type BandKey = 'delta' | 'theta' | 'alpha' | 'beta' | 'gamma';
+  const bandKeys: BandKey[] = ['delta', 'theta', 'alpha', 'beta', 'gamma'];
+
+  const perChannel: Record<string, { delta: number; theta: number; alpha: number; beta: number; gamma: number }> = {};
+  const globalBandSumSq: Record<BandKey, number> = { delta: 0, theta: 0, alpha: 0, beta: 0, gamma: 0 };
+  const globalBandCount: Record<BandKey, number> = { delta: 0, theta: 0, alpha: 0, beta: 0, gamma: 0 };
+
+  // Process up to 16 channels to keep response fast
+  const maxChannels = Math.min(edf.channels.length, 16);
+
+  for (let c = 0; c < maxChannels; c++) {
+    const data = edf.channels[c];
+    const chName = edf.labels[c];
+    const chBands = { delta: 0, theta: 0, alpha: 0, beta: 0, gamma: 0 };
+
+    for (const band of bandKeys) {
+      const s = scales[band];
+      let sumSq = 0;
+      let count = 0;
+
+      for (let t = s; t < data.length; t++) {
+        const diff = data[t] - data[t - s];
+        sumSq += diff * diff;
+        count++;
+      }
+
+      const rms = count > 0 ? Math.sqrt(sumSq / count) : 0;
+      chBands[band] = Math.round(rms * 100) / 100;
+      globalBandSumSq[band] += sumSq;
+      globalBandCount[band] += count;
+    }
+
+    perChannel[chName] = chBands;
+  }
+
+  const averaged = {} as Record<BandKey, number>;
+  for (const band of bandKeys) {
+    const rms = globalBandCount[band] > 0
+      ? Math.sqrt(globalBandSumSq[band] / globalBandCount[band])
+      : 0;
+    averaged[band] = Math.round(rms * 100) / 100;
+  }
+
+  const dominantBand = bandKeys.reduce((a, b) => averaged[b] > averaged[a] ? b : a);
+
+  return {
+    ...averaged,
+    dominantBand,
+    sampleRate,
+    channelsAnalysed: maxChannels,
+    sampleCount: edf.totalSamples,
+    interpretation: BAND_INTERPRETATIONS[dominantBand],
+    perChannel,
+  };
+}
 
 /**
  * Parse EEG CSV data and extract metadata.
