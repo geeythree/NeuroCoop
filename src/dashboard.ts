@@ -184,7 +184,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   <div class="sub">De-identifies EEG (Laplace noise + PII strip), encrypts (ECIES secp256k1), stores on Storacha, registers on Filecoin. ~30s for on-chain confirmation.</div>
   <div style="font-size:0.75rem;color:var(--dim);margin-bottom:8px;">Testnet wallet (pre-filled) -- has no real value. <a href="https://faucet.calibnet.chainsafe-fil.io/" target="_blank">Faucet</a></div>
   <div class="card-row">
-    <input id="joinKey" type="text" value="0x7096129d010cb538ed827abad1931480a9b3d02af1a907ccc483e136440ceafe" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
+    <input id="joinKey" type="text" value="" placeholder="0x... (testnet private key — get one at the faucet)" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
     <button class="btn btn-primary" onclick="doJoin()">Join & Upload EEG</button>
   </div>
   <div id="joinResp" class="resp"></div>
@@ -196,7 +196,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   <div class="sub">Researchers describe their study. Members vote after AI ethics screening.</div>
   <div style="font-size:0.75rem;color:var(--dim);margin-bottom:8px;">Testnet researcher wallet (pre-filled)</div>
   <div class="card-row">
-    <input id="propKey" type="text" value="0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
+    <input id="propKey" type="text" value="" placeholder="0x... (researcher testnet private key)" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
   </div>
   <div class="card-row">
     <input id="propPurpose" value="cognitive-profiling-for-ad-targeting" placeholder="Purpose" />
@@ -218,7 +218,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   <div class="sub">One member = one vote. No token weighting (cognitive equality). 50% quorum required for a binding result.</div>
   <div style="font-size:0.75rem;color:var(--dim);margin-bottom:8px;">Use any registered member's key. Proposal # is pre-filled with the latest.</div>
   <div class="card-row">
-    <input id="voteKey" type="text" value="0xae5374ce56e1f61d98c4b6d3ada9d189d535a90808f514ce2fde2004877cb4fb" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
+    <input id="voteKey" type="text" value="" placeholder="0x... (registered member testnet private key)" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
     <input id="voteId" type="number" value="0" style="max-width:100px;" />
     <button class="btn btn-green" onclick="doVote(true)">Vote FOR</button>
     <button class="btn btn-red" onclick="doVote(false)">Vote AGAINST</button>
@@ -231,7 +231,7 @@ export function getDashboardHtml(contractAddress: string, deployerAddress: strin
   <h2>Step 4: Execute Proposal</h2>
   <div class="sub">After the voting period (5 min), anyone can trigger execution. The contract checks quorum + majority and permanently records the outcome on-chain.</div>
   <div class="card-row">
-    <input id="execKey" type="text" value="0xae5374ce56e1f61d98c4b6d3ada9d189d535a90808f514ce2fde2004877cb4fb" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
+    <input id="execKey" type="text" value="" placeholder="0x... (testnet private key to submit execution tx)" style="font-size:0.72rem;font-family:monospace;color:var(--dim);" />
     <input id="execId" type="number" value="0" style="max-width:100px;" />
     <button class="btn btn-purple" onclick="doExec()">Execute</button>
   </div>

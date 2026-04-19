@@ -1,11 +1,20 @@
+/**
+ * Persistent Railway worker — runs populate every 6 hours.
+ * Deploy as a separate Railway service with start command:
+ *   node scripts/cron-worker.mjs
+ */
 import { createWalletClient, createPublicClient, http, parseAbi, defineChain } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
+
+const INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const BATCH = parseInt(process.env.BATCH_SIZE || '100');
 
 const chain = defineChain({
   id: 314159, name: 'Filecoin Calibration',
   nativeCurrency: { name: 'tFIL', symbol: 'tFIL', decimals: 18 },
   rpcUrls: { default: { http: ['https://api.calibration.node.glif.io/rpc/v1'] } },
 });
+
 const COOP = '0x95cdb710677d855159b77e81d6d386ae83f05dab';
 const ABI = parseAbi([
   'function submitProposal(string,string,uint256,uint8[]) external',
@@ -13,15 +22,13 @@ const ABI = parseAbi([
   'function executeProposal(uint256) external',
   'function proposalCount() view returns (uint256)',
 ]);
+
 const KEYS = [process.env.WALLET_KEY_1, process.env.WALLET_KEY_2, process.env.WALLET_KEY_3];
 if (KEYS.some((k) => !k)) {
   console.error('WALLET_KEY_1, WALLET_KEY_2, WALLET_KEY_3 are required (testnet-only wallets). Faucet: https://faucet.calibnet.chainsafe-fil.io/');
   process.exit(1);
 }
 
-// --batch N flag: only add N proposals per run (for scheduled CI jobs)
-const batchArg = process.argv.indexOf('--batch');
-const BATCH = batchArg !== -1 ? parseInt(process.argv[batchArg + 1]) : 500;
 const GOOD = [
   ['alzheimers-detection','Alpha/theta ratio for Alzheimer precursor. IRB approved.',90,[1,2]],
   ['epilepsy-seizure-prediction','High-gamma burst detection for pre-ictal classification.',60,[0,1]],
@@ -44,11 +51,12 @@ const GOOD = [
   ['anesthesia-depth','Burst suppression tracking for anesthesia depth.',45,[0,1]],
   ['anxiety-neurofeedback','Alpha upregulation for GAD symptom reduction.',90,[1,2]],
 ];
+
 const BAD = [
-  ['emotion-ad-targeting','Real-time emotion detection for ad personalization and purchase intent.',365,[0,1,2,3]],
-  ['employee-surveillance','Continuous attention monitoring for workforce productivity scoring.',365,[0,1,2,3]],
-  ['insurance-neural-profiling','Neurological risk extraction for insurance premium calculation.',365,[0,1,2,3]],
-  ['political-belief-detection','Neural correlates of political ideology for voter micro-targeting.',365,[0,1,2,3]],
+  ['emotion-ad-targeting','Real-time emotion detection for ad personalization.',365,[0,1,2,3]],
+  ['employee-surveillance','Continuous attention monitoring for workforce scoring.',365,[0,1,2,3]],
+  ['insurance-neural-profiling','Neurological risk extraction for insurance premiums.',365,[0,1,2,3]],
+  ['political-belief-detection','Neural correlates of political ideology for targeting.',365,[0,1,2,3]],
 ];
 
 const pub = createPublicClient({ chain, transport: http() });
@@ -60,29 +68,34 @@ async function send(w, fn, args) {
   return hash;
 }
 
-const start = Number(await pub.readContract({ address: COOP, abi: ABI, functionName: 'proposalCount' }));
-console.log(`Starting at #${start}`);
+async function runBatch() {
+  const start = Number(await pub.readContract({ address: COOP, abi: ABI, functionName: 'proposalCount' }));
+  console.log(`[${new Date().toISOString()}] Batch start — current proposals: ${start}`);
 
-const all = [];
-while (all.length < BATCH) {
-  for (const p of GOOD) all.push([...p, false]);
-  for (const p of BAD) all.push([...p, true]);
-}
-all.length = BATCH;
-
-let done = 0;
-for (const [purpose, desc, days, cats, bad] of all) {
-  try {
-    await send(wallets[done % 3], 'submitProposal', [purpose, desc, BigInt(days), cats]);
-    const id = BigInt(start + done);
-    const voters = bad ? wallets : wallets.slice(0, 2 + (done % 2));
-    for (const w of voters) try { await send(w, 'vote', [id, !bad]); } catch {}
-    await send(wallets[0], 'executeProposal', [id]);
-    done++;
-    if (done % 10 === 0) process.stdout.write(`${done} `);
-  } catch(e) {
-    process.stdout.write(`!`);
-    await new Promise(r => setTimeout(r, 2000));
+  const all = [];
+  while (all.length < BATCH) {
+    for (const p of GOOD) all.push([...p, false]);
+    for (const p of BAD) all.push([...p, true]);
   }
+  all.length = BATCH;
+
+  let done = 0;
+  for (const [purpose, desc, days, cats, bad] of all) {
+    try {
+      await send(wallets[done % 3], 'submitProposal', [purpose, desc, BigInt(days), cats]);
+      const id = BigInt(start + done);
+      const voters = bad ? wallets : wallets.slice(0, 2 + (done % 2));
+      for (const w of voters) try { await send(w, 'vote', [id, !bad]); } catch {}
+      await send(wallets[0], 'executeProposal', [id]);
+      done++;
+    } catch(e) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  console.log(`[${new Date().toISOString()}] Batch done — added ${done}, total: ${start + done}`);
 }
-console.log(`\nDone. ${done} proposals added. Total: ${start + done}`);
+
+// Run immediately on start, then every 6 hours
+console.log(`[${new Date().toISOString()}] Cron worker started — batch: ${BATCH}, interval: 6h`);
+runBatch();
+setInterval(runBatch, INTERVAL_MS);

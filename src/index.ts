@@ -1241,11 +1241,18 @@ async function main() {
   server.post('/demo/run', async (_req, reply) => {
     if (!requireContract(reply)) return;
 
+    const missing = ['MEMBER_B_KEY', 'MEMBER_C_KEY', 'RESEARCHER_KEY'].filter((k) => !process.env[k]);
+    if (missing.length > 0) {
+      return reply.code(500).send({
+        error: 'demo_keys_missing',
+        message: `Set ${missing.join(', ')} in .env (testnet-only wallets). Fund at https://faucet.calibnet.chainsafe-fil.io/`,
+      });
+    }
     const DEMO_KEYS = {
-      memberA:    (process.env.MEMBER_A_KEY    || config.ownerPrivateKey) as `0x${string}`,
-      memberB:    (process.env.MEMBER_B_KEY    || '0x7016002340be3593ea4a526b0c7fbe269676ac342cb8284a8d6fda25c6e292e0') as `0x${string}`,
-      memberC:    (process.env.MEMBER_C_KEY    || '0x7096129d010cb538ed827abad1931480a9b3d02af1a907ccc483e136440ceafe') as `0x${string}`,
-      researcher: (process.env.RESEARCHER_KEY  || '0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8') as `0x${string}`,
+      memberA:    (process.env.MEMBER_A_KEY || config.ownerPrivateKey) as `0x${string}`,
+      memberB:    process.env.MEMBER_B_KEY  as `0x${string}`,
+      memberC:    process.env.MEMBER_C_KEY  as `0x${string}`,
+      researcher: process.env.RESEARCHER_KEY as `0x${string}`,
     };
 
     // Register all demo wallets with the CoopClient

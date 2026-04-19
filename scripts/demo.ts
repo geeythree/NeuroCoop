@@ -93,11 +93,16 @@ async function main() {
   const veniceApiKey = process.env.VENICE_API_KEY || '';
 
   // Demo wallets (testnet only — never use real keys here)
+  const missing = ['MEMBER_B_KEY', 'MEMBER_C_KEY', 'RESEARCHER_KEY'].filter((k) => !process.env[k]);
+  if (missing.length > 0) {
+    console.error(`\n✗ Missing in .env: ${missing.join(', ')} (testnet-only wallets). Faucet: https://faucet.calibnet.chainsafe-fil.io/`);
+    process.exit(1);
+  }
   const wallets = {
     memberA: process.env.OWNER_PRIVATE_KEY as `0x${string}`,
-    memberB: (process.env.MEMBER_B_KEY || '0x7016002340be3593ea4a526b0c7fbe269676ac342cb8284a8d6fda25c6e292e0') as `0x${string}`,
-    memberC: (process.env.MEMBER_C_KEY || '0x7096129d010cb538ed827abad1931480a9b3d02af1a907ccc483e136440ceafe') as `0x${string}`,
-    researcher: (process.env.RESEARCHER_KEY || '0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8') as `0x${string}`,
+    memberB: process.env.MEMBER_B_KEY as `0x${string}`,
+    memberC: process.env.MEMBER_C_KEY as `0x${string}`,
+    researcher: process.env.RESEARCHER_KEY as `0x${string}`,
   };
 
   if (!wallets.memberA) {

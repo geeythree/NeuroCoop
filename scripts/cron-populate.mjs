@@ -24,11 +24,11 @@ const ABI = parseAbi([
   'function memberCount() view returns (uint256)',
 ]);
 
-const KEYS = [
-  process.env.OWNER_PRIVATE_KEY || '0xae5374ce56e1f61d98c4b6d3ada9d189d535a90808f514ce2fde2004877cb4fb',
-  '0x7096129d010cb538ed827abad1931480a9b3d02af1a907ccc483e136440ceafe',
-  '0x4f811878b064165e578bc70c3e65e12934688073186fd5e6226290b8efdee8d8',
-];
+const KEYS = [process.env.OWNER_PRIVATE_KEY, process.env.WALLET_KEY_2, process.env.WALLET_KEY_3];
+if (KEYS.some((k) => !k)) {
+  console.error('OWNER_PRIVATE_KEY, WALLET_KEY_2, WALLET_KEY_3 are required (testnet-only wallets). Faucet: https://faucet.calibnet.chainsafe-fil.io/');
+  process.exit(1);
+}
 
 const GOOD = [
   ['alzheimers-detection','Alpha/theta ratio for Alzheimer precursor. IRB approved.',90,[1,2]],
